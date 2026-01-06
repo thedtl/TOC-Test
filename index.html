@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF ToC Tool (Upgraded)</title>
+  <title>PDF ToC Tool (Upgraded v2)</title>
 
   <!-- Version pinning -->
   <script>
@@ -109,7 +109,7 @@
     }
 
     button:hover { background: var(--primary-hover); }
-    button:disabled { background: #9ca3af; cursor: not-allowed; }
+    button:disabled { background: #9ca3af; cursor: not-allowed; opacity: 0.7; }
 
     button.secondary { background: var(--muted); }
     button.secondary:hover { background: #4b5563; }
@@ -161,7 +161,7 @@
     .status-box.success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
     .status-box.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
     .status-box.processing { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
-    .status-box.warning { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .status-box.warning { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
 
     .chapter-row {
       display: flex;
@@ -230,11 +230,20 @@
     }
 
     details summary { user-select: none; }
+    
+    /* Busy state for global UI */
+    body.busy-cursor, body.busy-cursor button, body.busy-cursor input, body.busy-cursor select {
+      cursor: wait !important;
+    }
+    body.busy-cursor button {
+      opacity: 0.7;
+      pointer-events: none;
+    }
   </style>
 </head>
 
 <body>
-  <h1>📚 PDF ToC Tool (Upgraded)</h1>
+  <h1>📚 PDF ToC Tool (Upgraded v2)</h1>
 
   <!-- Step 1: Upload -->
   <div class="card">
@@ -298,6 +307,13 @@
             If extraction is weak, automatically OCR the ToC pages
           </label>
         </div>
+
+        <details style="margin-top: 10px;">
+          <summary style="font-size: 0.85em; color: #666; cursor: pointer;">Show Scan Debug Info</summary>
+          <div id="scan-debug-info" style="font-size: 11px; color: #444; background: #eee; padding: 8px; border-radius: 4px; margin-top: 5px; max-height: 150px; overflow-y: auto;">
+            No scan data yet.
+          </div>
+        </details>
       </div>
 
       <div style="flex: 1.3; min-width: 320px;">
@@ -428,7 +444,7 @@
 
           <div class="small-note" style="margin-top: 8px;">
             Tesseract recognizes better at higher resolution, and Tesseract.js exposes parameters like `tessedit_pageseg_mode`,
-            `preserve_interword_spaces`, and `user_defined_dpi`. :contentReference[oaicite:2]{index=2}
+            `preserve_interword_spaces`, and `user_defined_dpi`.
           </div>
         </div>
       </details>
@@ -459,7 +475,15 @@
 
     <div style="margin-bottom: 10px;">
       <label style="font-size: 0.9em;">Output filename:</label>
-      <input type="text" id="output-filename" placeholder="processed_document.pdf" style="margin-bottom: 0;">
+      <input type="text" id="output-filename" placeholder="processed_document.pdf" style="margin-bottom: 10px;">
+      
+      <label style="display:flex; gap:8px; align-items:center; font-size: 0.9em; color: #444;">
+        <input type="checkbox" id="preserve-labels" style="width:auto; margin:0;">
+        Preserve existing page labels (if any)
+      </label>
+      <div class="small-note" style="margin-left: 24px; margin-bottom: 10px;">
+        If checked, we won't overwrite the Roman/Arabic numbering scheme of the original PDF.
+      </div>
     </div>
 
     <button id="process-btn" class="success" style="width: 100%; font-size: 1.1em; padding: 15px;">Download PDF with Bookmarks</button>
@@ -496,7 +520,8 @@
         pageOffset: 1,
         detectedMaxRoman: 0,
         mainContentStartPdfPage: null,
-        chapters: []
+        chapters: [],
+        scanScores: [] // Debug info
       },
       ui: {
         currentPreviewPage: 1,
@@ -534,6 +559,7 @@
       autoRunBtn: $("auto-run-btn"),
       resetChaptersBtn: $("reset-chapters-btn"),
       pageOffset: $("page-offset"),
+      scanDebugInfo: $("scan-debug-info"),
       previewCanvas: $("preview-canvas"),
       previewPageNum: $("preview-page-num"),
       previewScale: $("preview-scale"),
@@ -576,9 +602,19 @@
       addChapterBtn: $("add-chapter-btn"),
 
       outputFilename: $("output-filename"),
+      preserveLabels: $("preserve-labels"),
       processBtn: $("process-btn"),
       status: $("status")
     };
+
+    function setBusy(isBusy) {
+      AppState.ui.busy = isBusy;
+      if (isBusy) {
+        document.body.classList.add("busy-cursor");
+      } else {
+        document.body.classList.remove("busy-cursor");
+      }
+    }
 
     /**********************************************************************
      * 3) Utilities
@@ -596,6 +632,12 @@
       let t = (token || "").trim();
       t = t.replace(/[.)\]]+$/g, "");
       t = t.replace(/^[[(]+/g, "");
+      t = t.trim();
+
+      // If token looks like a range, keep the first part: "12–14" -> "12"
+      t = t.replace(/^(\d+)\s*[–-]\s*\d+$/u, "$1");
+      t = t.replace(/^([ivxlcdm]+)\s*[–-]\s*[ivxlcdm]+$/iu, "$1");
+
       return t.trim();
     }
 
@@ -625,6 +667,14 @@
         .replace(/[^a-z0-9\s]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
+    }
+
+    function joinPrefix(prefix, title) {
+      const p = String(prefix || "").trim();
+      const t = String(title || "").trim();
+      if (!p) return t;
+      if (!t) return p;
+      return p + ": " + t;
     }
 
     const MAIN_CONTENT_HEADINGS = new Set([
@@ -674,12 +724,22 @@
     function saveStateToHistory() {
       if (AppState.history.isUndoRedo || AppState.history.isBulkEdit) return;
       const snapshot = JSON.stringify(AppState.toc.chapters || []);
+      
+      // Deduplicate consecutive states
+      if (AppState.history.index >= 0 && AppState.history.stack[AppState.history.index] === snapshot) {
+        return;
+      }
+
       if (AppState.history.index < AppState.history.stack.length - 1) {
         AppState.history.stack = AppState.history.stack.slice(0, AppState.history.index + 1);
       }
       AppState.history.stack.push(snapshot);
-      if (AppState.history.stack.length > 60) AppState.history.stack.shift();
-      else AppState.history.index++;
+      AppState.history.index++;
+
+      if (AppState.history.stack.length > 60) {
+        AppState.history.stack.shift();
+        AppState.history.index = Math.max(0, AppState.history.index - 1);
+      }
       updateHistoryButtons();
     }
 
@@ -724,7 +784,8 @@
       async function loadFromBytes(bytes, filename) {
         AppState.pdf.bytes = bytes;
         AppState.pdf.filename = filename || "document.pdf";
-        AppState.pdf.doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+        // Pass bytes directly (no slice) to save memory
+        AppState.pdf.doc = await pdfjsLib.getDocument({ data: bytes }).promise;
         AppState.pdf.pageCount = AppState.pdf.doc.numPages;
 
         // Page labels (optional)
@@ -821,7 +882,6 @@
         const viewport = page.getViewport({ scale: scaleForGeometry || 1 });
         const textContent = await page.getTextContent();
 
-        // TextItem has hasEOL in PDF.js, which indicates end of line in the text stream. :contentReference[oaicite:3]{index=3}
         const items = (textContent.items || [])
           .filter(it => it && typeof it.str === "string" && it.str.trim() !== "")
           .map(it => {
@@ -835,8 +895,11 @@
               y = it.transform && it.transform[5] ? it.transform[5] : 0;
             }
 
-            const w = typeof it.width === "number" ? it.width : 0;
-            const h = typeof it.height === "number" ? it.height : 0;
+            // Fix: Scale width to match viewport coordinate space
+            // it.width is in PDF units. viewport.scale handles the conversion.
+            const w = (typeof it.width === "number" ? it.width : 0) * (viewport.scale || 1);
+            const h = (typeof it.height === "number" ? it.height : 0) * (viewport.scale || 1);
+            
             return {
               str: it.str,
               x, y, w, h,
@@ -882,29 +945,28 @@
       const t = normalizePageToken(token).toLowerCase();
       if (!t) return null;
 
+      // 1) If the PDF provides page labels, trust them first.
+      const m = AppState.pdf.pageLabelIndexByLabel;
+      if (m && m.has(t)) return m.get(t);
+
       const total = AppState.pdf.pageCount || 0;
       const pageOffset = safeParseInt(El.pageOffset.value) || 1;
 
-      // Arabic
+      // 2) Arabic fallback via offset
       if (/^\d+$/.test(t)) {
         const pageNum = safeParseInt(t);
         const pdfIndex = (pageNum - 1) + (pageOffset - 1);
         return (pdfIndex >= 0 && pdfIndex < total) ? pdfIndex : null;
       }
 
-      // Roman
+      // 3) Roman fallback only if we have a reliable anchor
       if (isRomanNumeralToken(t)) {
-        if (AppState.pdf.pageLabelIndexByLabel && AppState.pdf.pageLabelIndexByLabel.has(t)) {
-          return AppState.pdf.pageLabelIndexByLabel.get(t);
-        }
-
         const rv = romanToInt(t);
         const maxRoman = AppState.toc.detectedMaxRoman || 0;
-
-        // If we saw roman pages in the ToC, infer roman block ends just before Arabic 1 (pageOffset)
+        // If we know maxRoman, we can anchor 'i' relative to the start of Arabic numbering
         if (Number.isFinite(rv) && rv > 0 && maxRoman > 0 && pageOffset > 1) {
-          const pdfIndex = (pageOffset - maxRoman + rv - 2);
-          return (pdfIndex >= 0 && pdfIndex < total) ? pdfIndex : null;
+             const pdfIndex = (pageOffset - 1) - (maxRoman - rv + 1);
+             if (pdfIndex >= 0 && pdfIndex < (pageOffset - 1)) return pdfIndex;
         }
       }
 
@@ -924,11 +986,14 @@
       }
 
       function stripLeaderNoise(s) {
-        return String(s || "").replace(/[._·•]{2,}/g, " ").replace(/\s+/g, " ").trim();
+        return String(s || "")
+          .replace(/(?:\s*[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]\s*){4,}/gu, " ")
+          .replace(/[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]{2,}/gu, " ")
+          .replace(/\s+/g, " ")
+          .trim();
       }
 
       function groupItemsIntoLines(items) {
-        // Sort roughly top to bottom, left to right.
         const sorted = [...items].sort((a, b) => {
           const dy = a.y - b.y;
           if (Math.abs(dy) > 2) return dy;
@@ -989,28 +1054,7 @@
         return out.trim();
       }
 
-      function detectPageNumberSide(lines, viewport) {
-        // Find candidate page number tokens in lines, look at x distribution.
-        const w = viewport.width || 1;
-        const xs = [];
-        for (const ln of lines) {
-          for (const it of ln.items) {
-            const t = normalizePageToken(it.str);
-            if (isPageTokenStr(t)) xs.push(it.x / w);
-          }
-        }
-        if (xs.length < 6) return "unknown";
-
-        const left = xs.filter(v => v < 0.25).length / xs.length;
-        const right = xs.filter(v => v > 0.75).length / xs.length;
-
-        if (right >= 0.65) return "right";
-        if (left >= 0.65) return "left";
-        return "unknown";
-      }
-
       function splitColumns(lines, viewport) {
-        // Simple 2 column detection: if many line starts cluster on both sides.
         const w = viewport.width || 1;
         const starts = lines
           .map(ln => {
@@ -1040,14 +1084,43 @@
         return [lines];
       }
 
-      function extractEntriesFromLines(lines, side, viewport) {
-        const entries = [];
-        const w = viewport.width || 1;
+      function pickPageTokenByGap(lineItems) {
+        const items = [...lineItems].sort((a, b) => a.x - b.x);
+        const candidates = items
+          .map((it, idx) => ({ it, idx, tok: normalizePageToken(it.str) }))
+          .filter(o => o.tok && (/^\d+$/.test(o.tok) || isRomanNumeralToken(o.tok)));
 
+        if (!candidates.length) return null;
+
+        // Prefer the rightmost candidate, but only if it is well separated
+        const rightmost = candidates.reduce((a, b) => (a.it.x > b.it.x ? a : b));
+        
+        // If it's the only item, it's the page token
+        if (items.length === 1) return rightmost;
+
+        const prev = items[rightmost.idx - 1];
+        if (!prev) return rightmost; 
+
+        const prevEnd = (prev.x + (prev.w || 0));
+        const gap = rightmost.it.x - prevEnd;
+
+        // Threshold: 3% of page width or ~15px
+        const lineStart = items[0].x;
+        const lineEnd = items[items.length-1].x + items[items.length-1].w;
+        const lineW = lineEnd - lineStart;
+        
+        if (gap > 15 || gap > (lineW * 0.05)) {
+            return rightmost;
+        }
+
+        return null;
+      }
+
+      function extractEntriesFromLines(lines) {
+        const entries = [];
         let bufferedTitle = "";
         let bufferedPrefix = "";
 
-        // Prefix patterns
         const chapterMarkerPattern = /^(chapter|capítulo|capitulo|chapitre|kapitel|capitolo|parte|part|teil|section|sección|seccion)\s*(\d+)\.?$/i;
         const sectionHeaderPattern = /^(introducción|introduction|conclusión|conclusion|apéndices|appendices|prefacio|preface|foreword|prologue)$/i;
 
@@ -1064,7 +1137,6 @@
 
           if (!trimmed) continue;
 
-          // Section/chapter prefix capturing
           if (sectionHeaderPattern.test(trimmed)) {
             bufferedPrefix = trimmed.replace(/\.?$/, "");
             continue;
@@ -1074,61 +1146,39 @@
             continue;
           }
 
-          // Identify page token item by geometry:
-          const candidates = ln.items
-            .map(it => ({ it, token: normalizePageToken(it.str) }))
-            .filter(o => isPageTokenStr(o.token));
+          const chosen = pickPageTokenByGap(ln.items);
 
-          const lineOnlyToken = candidates.length === 1 && stripLeaderNoise(trimmed) === candidates[0].token;
-          if (lineOnlyToken) {
-            // standalone page token line, attach to previous buffered title if present
-            if (bufferedTitle || bufferedPrefix) {
-              const t = bufferedTitle || "";
-              const full = bufferedPrefix ? bufferedPrefix + ": " + t : t;
-              pushEntry(full, candidates[0].token);
-              bufferedTitle = "";
-              bufferedPrefix = "";
-            }
-            continue;
+          if (!chosen) {
+             // No distinct page token found, treat as wrapped title
+             bufferedTitle = bufferedTitle ? (bufferedTitle + " " + trimmed) : trimmed;
+             continue;
           }
 
-          if (!candidates.length) {
-            // accumulate buffer for wrapped titles
-            bufferedTitle = bufferedTitle ? (bufferedTitle + " " + trimmed) : trimmed;
-            continue;
+          // We have a page token.
+          // Is the line *only* the page token?
+          const isLineOnlyToken = (ln.items.length === 1) || (stripLeaderNoise(trimmed) === chosen.tok);
+
+          if (isLineOnlyToken) {
+             const t = joinPrefix(bufferedPrefix, bufferedTitle);
+             if (t) {
+                 pushEntry(t, chosen.tok);
+                 bufferedTitle = "";
+                 bufferedPrefix = "";
+             }
+             continue;
           }
 
-          // Choose page token based on side.
-          let chosen = null;
-          if (side === "left") {
-            chosen = candidates.reduce((a, b) => (a.it.x < b.it.x ? a : b));
-          } else if (side === "right") {
-            chosen = candidates.reduce((a, b) => (a.it.x > b.it.x ? a : b));
-          } else {
-            // fallback: pick the rightmost token if it's in far right, else leftmost
-            const rightMost = candidates.reduce((a, b) => (a.it.x > b.it.x ? a : b));
-            const leftMost = candidates.reduce((a, b) => (a.it.x < b.it.x ? a : b));
-            const rp = rightMost.it.x / w;
-            const lp = leftMost.it.x / w;
-            chosen = rp > 0.6 ? rightMost : (lp < 0.4 ? leftMost : rightMost);
-          }
-
-          // Title is everything except chosen token and any leader noise.
+          // Line has title + token
           const filtered = ln.items.filter(it => it !== chosen.it);
           let titleText = stripLeaderNoise(assembleLineTextFromItems(filtered));
-
-          // If there is a bufferedTitle, prepend it.
+          
           if (bufferedTitle) titleText = (bufferedTitle + " " + titleText).trim();
+          titleText = joinPrefix(bufferedPrefix, titleText);
 
-          // If prefix exists, prefix it.
-          if (bufferedPrefix) titleText = bufferedPrefix + ": " + titleText;
-
-          // Reset buffers
           bufferedTitle = "";
           bufferedPrefix = "";
 
-          // Guard against cases where title becomes empty
-          if (titleText && chosen.token) pushEntry(titleText, chosen.token);
+          if (titleText && chosen.tok) pushEntry(titleText, chosen.tok);
         }
 
         return entries;
@@ -1147,8 +1197,6 @@
             continue;
           }
 
-          // Prefer hasEOL if items arrive in content order; otherwise grouping still works.
-          // PDF.js TextItem hasEOL indicates end of line. :contentReference[oaicite:4]{index=4}
           const hasAnyEol = items.some(it => it.hasEOL);
           let lines;
 
@@ -1172,15 +1220,13 @@
             lines = groupItemsIntoLines(items);
           }
 
-          const side = detectPageNumberSide(lines, viewport);
           const columns = splitColumns(lines, viewport);
 
           for (const col of columns) {
-            const pageEntries = extractEntriesFromLines(col, side, viewport);
+            const pageEntries = extractEntriesFromLines(col);
             entries.push(...pageEntries);
           }
 
-          // raw debug
           for (const ln of lines) rawLines.push(assembleLineTextFromItems(ln.items));
           rawLines.push("");
         }
@@ -1219,7 +1265,10 @@
       return {
         extractFromPdfRange,
         detectMaxRoman,
-        findMainContentStartFromEntries
+        findMainContentStartFromEntries,
+        groupItemsIntoLines,
+        assembleLineTextFromItems,
+        splitColumns
       };
     })();
 
@@ -1228,14 +1277,14 @@
      **********************************************************************/
     const OcrService = (function(){
       async function ensureScheduler(langsArray, oem, statusCb) {
-        const langsKey = (langsArray || []).join(",");
+        const langStr = (langsArray || []).join("+");
+        const langsKey = langStr;
         const desiredOem = Number.isFinite(oem) ? oem : 1;
 
         if (AppState.ocr.scheduler && AppState.ocr.lastLangsKey === langsKey && AppState.ocr.lastOem === desiredOem) {
           return AppState.ocr.scheduler;
         }
 
-        // Tear down existing
         if (AppState.ocr.scheduler) {
           try { await AppState.ocr.scheduler.terminate(); } catch (e) {}
         }
@@ -1245,13 +1294,12 @@
         const { createWorker, createScheduler } = Tesseract;
         const scheduler = createScheduler();
 
-        // Default to 1 worker for stability
-        const workerCount = 1;
+        // Conservative worker count
+        const workerCount = Math.min(2, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
 
         for (let i = 0; i < workerCount; i++) {
           if (statusCb) statusCb("Initializing OCR worker " + (i + 1) + " of " + workerCount + "...");
-          // createWorker(langs, oem, options) supports logger and init config. :contentReference[oaicite:5]{index=5}
-          const worker = await createWorker(langsArray, desiredOem, {
+          const worker = await createWorker(langStr, desiredOem, {
             logger: (m) => {
               if (statusCb && m && m.status === "recognizing text") {
                 statusCb("OCR progress: " + Math.round((m.progress || 0) * 100) + "%");
@@ -1328,7 +1376,6 @@
       function binarize(grayImageData) {
         const d = grayImageData.data;
         const t = otsuThreshold(grayImageData);
-        // Decide inversion based on average brightness
         let sum = 0;
         for (let i = 0; i < d.length; i += 4) sum += d[i];
         const avg = sum / (d.length / 4);
@@ -1352,11 +1399,10 @@
         let minX = width, minY = height, maxX = 0, maxY = 0;
         let found = false;
 
-        // Look for non-white pixels
         for (let y = 0; y < height; y++) {
           for (let x = 0; x < width; x++) {
             const i = (y * width + x) * 4;
-            const v = d[i]; // after preprocess this is 0 or 255 often
+            const v = d[i];
             if (v < 250) {
               found = true;
               if (x < minX) minX = x;
@@ -1398,7 +1444,6 @@
 
         ctx.putImageData(out, 0, 0);
 
-        // Auto crop after binarization
         if (mode === "adaptive") return autoCropToInk(canvas, 18);
         return canvas;
       }
@@ -1415,7 +1460,6 @@
 
         const scheduler = await ensureScheduler(langs, 1, statusCb);
 
-        // Set parameters: tessedit_pageseg_mode, preserve_interword_spaces, user_defined_dpi. :contentReference[oaicite:6]{index=6}
         for (const w of AppState.ocr.workers) {
           await w.setParameters({
             tessedit_pageseg_mode: psm,
@@ -1438,6 +1482,24 @@
         return fullText;
       }
 
+      async function sniffTocInScannedPdf(startPage, endPage) {
+        // Fast, low-DPI OCR just to find "Contents"
+        const scheduler = await ensureScheduler(["eng", "spa"], 1, null);
+        for (const w of AppState.ocr.workers) {
+          await w.setParameters({ tessedit_pageseg_mode: 1 }); // Auto OSD
+        }
+
+        for (let p = startPage; p <= endPage; p++) {
+          const canvas = await PdfService.renderPageToCanvas(p, 100); // Low DPI
+          const res = await scheduler.addJob("recognize", canvas);
+          const txt = (res.data.text || "").toLowerCase();
+          if (/(contents|índice|indice|inhalt|sommaire)/.test(txt)) {
+            return p;
+          }
+        }
+        return null;
+      }
+
       async function terminate() {
         if (AppState.ocr.scheduler) {
           try { await AppState.ocr.scheduler.terminate(); } catch (e) {}
@@ -1446,11 +1508,12 @@
         AppState.ocr.workers = [];
       }
 
-      return { ocrPdfRange, terminate };
+      return { ocrPdfRange, sniffTocInScannedPdf, terminate };
     })();
 
-    window.addEventListener("unload", async () => {
-      await OcrService.terminate();
+    // Use pagehide for more reliable cleanup than unload
+    window.addEventListener("pagehide", () => {
+      OcrService.terminate();
     });
 
     /**********************************************************************
@@ -1547,6 +1610,8 @@
       handle.addEventListener("dragstart", (e) => {
         row.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
+        // Required for Safari drag and drop
+        e.dataTransfer.setData("text/plain", "");
       });
       handle.addEventListener("dragend", () => {
         row.classList.remove("dragging");
@@ -1661,13 +1726,15 @@
       const viewport = page.getViewport({ scale: 1 });
       const h = viewport.height;
 
-      const isHeader = (y) => y > h * 0.85;
-      const isFooter = (y) => y < h * 0.15;
+      // In viewport (canvas like) coords: header is near top (small y), footer near bottom (large y)
+      const isHeader = (y) => y < h * 0.15;
+      const isFooter = (y) => y > h * 0.85;
 
       return (textContent.items || [])
         .filter(item => item && item.transform && typeof item.str === "string")
         .map(item => {
-          const y = item.transform[5];
+          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+          const y = tx[5];
           const str = item.str.trim().replace(/^[-[\]\s]+|[-[\]\s]+$/g, "");
           return { y, str };
         })
@@ -1684,35 +1751,110 @@
       return /(\.{4,}|(\.\s){6,})/.test(rawText || "");
     }
 
-    function isListLikeByLineEndings(lines) {
-      const clean = (lines || []).map(l => l.trim()).filter(Boolean);
-      if (clean.length < 6) return false;
-      const endsWithPage = clean.filter(l => /(\d+|[ivxlcdm]+)\.?$/i.test(l)).length;
-      return endsWithPage >= 4 && (endsWithPage / clean.length) >= 0.35;
+    function stripNoise(s) {
+      return String(s || "")
+        .replace(/(?:\s*[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]\s*){4,}/gu, " ")
+        .replace(/[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]{2,}/gu, " ")
+        .replace(/\s{2,}/g, " ")
+        .trim();
     }
 
     async function scoreTocPage(pageNum) {
-      const { items } = await PdfService.getTextItemsWithViewport(pageNum, 1);
-      const text = items.map(i => i.str).join("\n");
-      const raw = String(text || "");
-      const lines = raw.split("\n").map(s => stripNoise(s)).filter(Boolean);
+      const { items, viewport } = await PdfService.getTextItemsWithViewport(pageNum, 1);
+      
+      // If no items, it might be a scanned page. Return special signal.
+      if (!items.length) return { pageNum, score: 0, entryish: 0, hasKeyword: false, isEmpty: true };
 
-      const entryish = lines.filter(l => /(\d+|[ivxlcdm]+)\s*$/.test(l)).length;
-      let score = entryish;
-      if (containsTocKeyword(raw)) score += 6;
-      if (containsDotLeaders(raw)) score += 2;
-      if (isListLikeByLineEndings(lines)) score += 2;
+      const hasAnyEol = items.some(it => it.hasEOL);
+      let lines = [];
 
-      return { pageNum, score, entryish, hasKeyword: containsTocKeyword(raw) };
+      if (hasAnyEol) {
+        let cur = [];
+        for (const it of items) {
+          cur.push(it);
+          if (it.hasEOL) {
+            cur.sort((a, b) => a.x - b.x);
+            lines.push({ items: cur });
+            cur = [];
+          }
+        }
+        if (cur.length) {
+          cur.sort((a, b) => a.x - b.x);
+          lines.push({ items: cur });
+        }
+      } else {
+        lines = TocService.groupItemsIntoLines(items);
+      }
+
+      const columns = TocService.splitColumns(lines, viewport);
+      
+      let totalEntryish = 0;
+      let fullRawText = "";
+
+      for (const col of columns) {
+          const textLines = col
+            .map(ln => stripNoise(TocService.assembleLineTextFromItems(ln.items)))
+            .filter(Boolean);
+          
+          fullRawText += textLines.join("\n") + "\n";
+
+          const endsWithPage = textLines.filter(l =>
+            /(?:\s*[._·•]\s*)*(\d+|[ivxlcdm]+)\.?$/i.test(l)
+          ).length;
+
+          const startsWithPage = textLines.filter(l =>
+            /^(\d+|[ivxlcdm]+)\b/i.test(l)
+          ).length;
+
+          totalEntryish += Math.max(endsWithPage, startsWithPage);
+      }
+
+      let score = 0;
+      score += totalEntryish * 1.0;
+
+      const hasKeyword = containsTocKeyword(fullRawText);
+      if (hasKeyword) score += 8;
+
+      if (containsDotLeaders(fullRawText)) score += 3;
+
+      const totalLines = fullRawText.split('\n').filter(Boolean).length;
+      const ratio = totalLines ? (totalEntryish / totalLines) : 0;
+      if (totalEntryish >= 6 && ratio >= 0.35) score += 6;
+
+      return { pageNum, score, entryish: totalEntryish, hasKeyword, isEmpty: false };
     }
 
-    function stripNoise(s) {
-      return String(s || "").replace(/\.{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
+    function renderScanDebug(scores) {
+      if (!scores || !scores.length) {
+        El.scanDebugInfo.textContent = "No scan data.";
+        return;
+      }
+      const html = scores.map(s => 
+        `<div>Pg ${s.pageNum}: Score ${s.score.toFixed(1)} (Entries: ${s.entryish}, Key: ${s.hasKeyword ? 'Y' : 'N'}${s.isEmpty ? ', Empty' : ''})</div>`
+      ).join("");
+      El.scanDebugInfo.innerHTML = html;
     }
 
     async function autoFindTocRange(scanStart, scanEnd) {
       const scores = [];
-      for (let p = scanStart; p <= scanEnd; p++) scores.push(await scoreTocPage(p));
+      let emptyCount = 0;
+
+      for (let p = scanStart; p <= scanEnd; p++) {
+        const s = await scoreTocPage(p);
+        scores.push(s);
+        if (s.isEmpty) emptyCount++;
+      }
+      
+      AppState.toc.scanScores = scores;
+      renderScanDebug(scores);
+
+      // If mostly empty, try scanned PDF fallback
+      if (emptyCount > (scanEnd - scanStart) * 0.8) {
+        const foundPage = await OcrService.sniffTocInScannedPdf(scanStart, scanEnd);
+        if (foundPage) {
+          return { start: foundPage, end: foundPage, best: { pageNum: foundPage, score: 10 } };
+        }
+      }
 
       let best = scores[0] || null;
       for (const s of scores) if (!best || s.score > best.score) best = s;
@@ -1744,6 +1886,8 @@
 
     async function autoDetectStructure() {
       if (!AppState.pdf.doc) return;
+      if (AppState.ui.busy) return;
+      setBusy(true);
 
       const statusEl = El.fileInfo;
       const original = (statusEl.textContent || "").split(" | ")[0];
@@ -1828,6 +1972,8 @@
         statusEl.textContent = original + " | Auto-detect error";
         statusEl.style.backgroundColor = "#fee2e2";
         setTimeout(() => statusEl.style.backgroundColor = "", 2000);
+      } finally {
+        setBusy(false);
       }
     }
 
@@ -1899,38 +2045,48 @@
       }
     }
 
-    async function extractUsingOcrFromPdf() {
+    async function extractUsingOcrFromPdf(overrideOptions) {
       if (!AppState.pdf.doc) return alert("Load a PDF first.");
+      if (AppState.ui.busy) return;
+      setBusy(true);
 
       const startPage = safeParseInt(El.tocStart.value) || 1;
       const endPage = safeParseInt(El.tocEnd.value) || startPage;
 
       if (startPage < 1 || endPage > AppState.pdf.pageCount || startPage > endPage) {
         showExtractStatus("error", "Invalid ToC page range.");
+        setBusy(false);
+        return;
+      }
+
+      // Safety cap
+      if ((endPage - startPage + 1) > 15 && !confirm("You are about to OCR " + (endPage - startPage + 1) + " pages. This may crash the browser tab. Continue?")) {
+        setBusy(false);
         return;
       }
 
       try {
         showExtractStatus("processing", "Starting OCR...");
-        const text = await OcrService.ocrPdfRange(
-          startPage,
-          endPage,
-          {
+        
+        const opts = overrideOptions || {
             langs: El.ocrLang.value,
             psm: El.ocrPsm.value,
             dpi: El.ocrDpi.value,
             preprocess: El.ocrPreprocess.value
-          },
+        };
+
+        const text = await OcrService.ocrPdfRange(
+          startPage,
+          endPage,
+          opts,
           (m) => showExtractStatus("processing", m)
         );
 
-        // Normalize OCR output lightly
         const raw = normalizeNewlines(text || "");
         const lines = raw.split("\n").map(l => repairTrailingPageNumber(stripNoise(l))).filter(Boolean);
         const cleaned = lines.join("\n");
         setRawToc(cleaned);
 
-        // Parse OCR text with a tolerant line parser (page last or page first heuristics)
         const entries = parseTocTextFallback(cleaned);
         updateDetectedMaxRoman(entries);
         updateMainContentStart(entries);
@@ -1940,14 +2096,17 @@
           setChapters(chapters, { saveHistory: true });
           showExtractStatus("success", "Found " + chapters.length + " entries via OCR.");
           validateAllChapters();
+          setBusy(false);
           return true;
         }
 
-        showExtractStatus("warning", "OCR completed but parsing produced no entries. Try different PSM or DPI.");
+        showExtractStatus("warning", "OCR completed but parsing produced no entries.");
+        setBusy(false);
         return false;
       } catch (e) {
         console.error(e);
         showExtractStatus("error", "OCR error: " + e.message);
+        setBusy(false);
         return false;
       }
     }
@@ -1961,12 +2120,41 @@
       const wantOcr = !!El.autoOcrFallback.checked;
       if (!wantOcr) return false;
 
-      return await extractUsingOcrFromPdf();
+      // 3) Try OCR with current settings (default adaptive)
+      const okOcr = await extractUsingOcrFromPdf();
+      if (okOcr) return true;
+
+      // 4) If adaptive failed (0 entries), try Grayscale once automatically
+      if (El.ocrPreprocess.value === "adaptive") {
+          showExtractStatus("processing", "Adaptive OCR yielded no results. Retrying with Grayscale...");
+          const okGray = await extractUsingOcrFromPdf({
+              langs: El.ocrLang.value,
+              psm: El.ocrPsm.value,
+              dpi: El.ocrDpi.value,
+              preprocess: "grayscale"
+          });
+          return okGray;
+      }
+
+      return false;
     }
 
     /**********************************************************************
      * 13) OCR text fallback parser (no geometry)
      **********************************************************************/
+    function parseTocTextFallback(rawText) {
+      const lines = normalizeNewlines(rawText || "")
+        .split("\n")
+        .map(l => repairTrailingPageNumber(stripNoise(l)))
+        .map(l => l.trim())
+        .filter(Boolean);
+
+      const fmt = detectTocFormatText(lines);
+      return fmt === "page-first"
+        ? parsePageFirstFormatText(lines)
+        : parsePageLastFormatText(lines);
+    }
+
     function detectTocFormatText(lines) {
       let pageFirstCount = 0;
       let pageLastCount = 0;
@@ -2026,8 +2214,8 @@
           if (buffer || prefixA || prefixB) {
             const page = normalizePageToken(s);
             let title = buffer || "";
-            if (prefixB) title = prefixB + (title ? ": " + title : "");
-            if (prefixA) title = prefixA + (title ? ": " + title : "");
+            title = joinPrefix(prefixB, title);
+            title = joinPrefix(prefixA, title);
             out.push({ title: cleanTitle(title), page });
             buffer = "";
             prefixA = "";
@@ -2036,15 +2224,15 @@
           continue;
         }
 
-        // inline: title ... page
-        const m = s.match(/^(.+?)\s+(\d+|[ivxlcdm]+)$/i);
+        // inline: title ... page (allow optional trailing punctuation like . or ) or ])
+        const m = s.match(/^(.+?)\s+(\d+|[ivxlcdm]+)[.)\]]?$/i);
         if (m) {
           const t = cleanTitle(m[1]);
           const page = normalizePageToken(m[2]);
           const combined = buffer ? (buffer + " " + t) : t;
           let title = combined;
-          if (prefixB) title = prefixB + ": " + title;
-          if (prefixA) title = prefixA + ": " + title;
+          title = joinPrefix(prefixB, title);
+          title = joinPrefix(prefixA, title);
           out.push({ title: cleanTitle(title), page });
           buffer = "";
           prefixA = "";
@@ -2056,17 +2244,6 @@
       }
 
       return out;
-    }
-
-    function parseTocTextFallback(text) {
-      const lines = normalizeNewlines(text || "")
-        .split("\n")
-        .map(l => stripNoise(l))
-        .filter(Boolean);
-
-      const fmt = detectTocFormatText(lines);
-      if (fmt === "page-first") return parsePageFirstFormatText(lines);
-      return parsePageLastFormatText(lines);
     }
 
     /**********************************************************************
@@ -2190,6 +2367,10 @@
         if (shouldSort) sortChaptersByPage();
       }
 
+      if (!confirm("This will create a new PDF with your bookmarks. Continue?")) {
+        return;
+      }
+
       El.processBtn.disabled = true;
       El.status.classList.remove("hidden");
       El.status.className = "status-box processing";
@@ -2229,7 +2410,8 @@
             const dict = context.obj({
               Title: PDFString.of(item.title),
               Dest: context.obj([pageRef, PDFName.of("XYZ"), null, null, null]),
-              Parent: null
+              Parent: null,
+              Count: PDFNumber.of(0) // Explicitly set count to 0 for leaf nodes for compatibility
             });
             refs.push(context.register(dict));
           }
@@ -2253,20 +2435,22 @@
           doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
         }
 
-        // Page labels: roman for front matter, then Arabic starting at 1
-        const nums = [];
-        nums.push(PDFNumber.of(0));
+        // Page labels: Only overwrite if user didn't check "Preserve"
+        if (!El.preserveLabels.checked) {
+          const nums = [];
+          nums.push(PDFNumber.of(0));
 
-        if (pageOffset > 1) {
-          nums.push(context.obj({ S: PDFName.of("r"), St: PDFNumber.of(1) }));
-          nums.push(PDFNumber.of(pageOffset - 1));
-          nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
-        } else {
-          nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
+          if (pageOffset > 1) {
+            nums.push(context.obj({ S: PDFName.of("r"), St: PDFNumber.of(1) }));
+            nums.push(PDFNumber.of(pageOffset - 1));
+            nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
+          } else {
+            nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
+          }
+
+          const labelsDict = context.obj({ Nums: nums });
+          doc.catalog.set(PDFName.of("PageLabels"), context.register(labelsDict));
         }
-
-        const labelsDict = context.obj({ Nums: nums });
-        doc.catalog.set(PDFName.of("PageLabels"), context.register(labelsDict));
 
         const data = await doc.save();
         const blob = new Blob([data], { type: "application/pdf" });
@@ -2362,7 +2546,7 @@
     El.setTocCurrentBtn.addEventListener("click", setTocToCurrentPage);
 
     El.extractGeoBtn.addEventListener("click", extractUsingGeometry);
-    El.extractOcrBtn.addEventListener("click", extractUsingOcrFromPdf);
+    El.extractOcrBtn.addEventListener("click", () => extractUsingOcrFromPdf());
 
     El.copyRawBtn.addEventListener("click", copyRawToc);
     El.downloadRawBtn.addEventListener("click", downloadRawToc);
