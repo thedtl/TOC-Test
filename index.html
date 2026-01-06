@@ -202,7 +202,6 @@
       margin-top: 10px;
     }
 
-    /* Busy state for global UI */
     body.busy-cursor, body.busy-cursor button, body.busy-cursor input, body.busy-cursor select {
       cursor: wait !important;
     }
@@ -408,8 +407,8 @@
         pageCount: 0,
         pageLabels: null,
         pageLabelIndexByLabel: null,
-        romanToArabicBoundary: null, // Page index where labels switch from Roman to Arabic
-        outline: null // Cached outline from getOutline()
+        romanToArabicBoundary: null,
+        outline: null
       },
       toc: {
         startPage: 1,
@@ -519,11 +518,8 @@
       t = t.replace(/[.)\]]+$/g, "");
       t = t.replace(/^[[(]+/g, "");
       t = t.trim();
-
-      // If token looks like a range, keep the first part: "12–14" -> "12"
       t = t.replace(/^(\d+)\s*[–-]\s*\d+$/u, "$1");
       t = t.replace(/^([ivxlcdm]+)\s*[–-]\s*[ivxlcdm]+$/iu, "$1");
-
       return t.trim();
     }
 
@@ -567,7 +563,6 @@
       return p + ": " + t;
     }
 
-    // Strip noise for parsing (removes dot leaders)
     function stripNoise(s) {
       return String(s || "")
         .replace(/(?:\s*[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]\s*){4,}/gu, " ")
@@ -585,7 +580,7 @@
       "introducao", "prefacio", "prologo"
     ]);
 
-    // ToC keywords in multiple languages
+    // Basic ToC keywords for outline search
     const TOC_KEYWORDS = [
       "table of contents", "contents", "índice", "indice", "contenido",
       "sommaire", "inhalt", "inhaltsverzeichnis", "capitoli", "sommario",
@@ -695,7 +690,6 @@
         AppState.pdf.doc = await pdfjsLib.getDocument({ data: bytes }).promise;
         AppState.pdf.pageCount = AppState.pdf.doc.numPages;
 
-        // Page labels
         AppState.pdf.pageLabels = null;
         AppState.pdf.pageLabelIndexByLabel = null;
         AppState.pdf.romanToArabicBoundary = null;
@@ -711,7 +705,6 @@
             }
             AppState.pdf.pageLabelIndexByLabel = m;
             
-            // Detect Roman → Arabic boundary
             let foundRoman = false;
             for (let i = 0; i < labels.length; i++) {
               const lbl = String(labels[i] || "").trim();
@@ -725,13 +718,11 @@
           }
         } catch (e) {}
 
-        // Get outline (bookmarks)
         AppState.pdf.outline = null;
         try {
           AppState.pdf.outline = await AppState.pdf.doc.getOutline();
         } catch (e) {}
 
-        // UI defaults
         El.fileInfo.textContent = AppState.pdf.filename + " (" + AppState.pdf.pageCount + " pages)";
         El.fileInfoContainer.classList.remove("hidden");
         El.urlError.classList.add("hidden");
@@ -851,7 +842,6 @@
         return canvas;
       }
 
-      // Get page index from outline destination
       async function getPageIndexFromDest(dest) {
         if (!dest) return null;
         try {
@@ -867,29 +857,54 @@
         return null;
       }
 
+      // Get link annotation stats for detecting clickable ToCs
+      async function getLinkStats(pageNum) {
+        if (!AppState.pdf.doc) return { total: 0, internal: 0, external: 0 };
+        const page = await AppState.pdf.doc.getPage(pageNum);
+
+        let ann = [];
+        try {
+          ann = await page.getAnnotations({ intent: "display" });
+        } catch (e) {
+          ann = [];
+        }
+
+        let total = 0, internal = 0, external = 0;
+
+        for (const a of (ann || [])) {
+          const isLink = a && (a.subtype === "Link" || a.url || a.dest);
+          if (!isLink) continue;
+
+          total++;
+          if (a.url) external++;
+          else internal++;
+        }
+
+        return { total, internal, external };
+      }
+
       return {
         loadFromBytes,
         loadFromDropboxUrl,
         renderPreview,
         getTextItemsWithViewport,
         renderPageToCanvas,
-        getPageIndexFromDest
+        getPageIndexFromDest,
+        getLinkStats
       };
     })();
 
     /**********************************************************************
-     * 6) Outline (bookmark) analysis - NEW
+     * 6) Outline (bookmark) analysis
      **********************************************************************/
     async function findTocFromOutline() {
       const outline = AppState.pdf.outline;
       if (!outline || !outline.length) return null;
 
-      // Walk outline looking for ToC-like entries
       async function walkOutline(items, depth) {
         for (const item of items) {
           const title = foldText(item.title || "");
           
-          // Check if this is a ToC/Contents entry
           if (TOC_KEYWORD_PATTERN.test(title) || title === "contents" || title === "toc") {
             const pageIndex = await PdfService.getPageIndexFromDest(item.dest);
             if (pageIndex !== null) {
@@ -897,7 +912,6 @@
             }
           }
           
-          // Check for chapter/introduction entries (ToC must end before these)
           const isMainContent = /^(chapter|introduction|foreword|preface|part)\s*\d*$/i.test(title) ||
                                MAIN_CONTENT_HEADINGS.has(title);
           if (isMainContent && depth === 0) {
@@ -907,7 +921,6 @@
             }
           }
           
-          // Recurse into children
           if (item.items && item.items.length) {
             const found = await walkOutline(item.items, depth + 1);
             if (found) return found;
@@ -1565,62 +1578,50 @@
     }
 
     /**********************************************************************
-     * 11) IMPROVED ToC detection with geometry-based scoring
+     * 11) ROBUST ToC detection (1900s layouts through modern linked PDFs)
      **********************************************************************/
-    
-    // Count right-aligned page number tokens using geometry
-    function countRightAlignedPageTokens(items, viewportWidth) {
-      const rightMarginThreshold = 0.72; // x/width >= 0.72 considered right-aligned
-      let count = 0;
-      const seenY = new Set();
-      
-      for (const item of items) {
-        const str = String(item.str || "").trim();
-        if (!isPageNumberToken(str)) continue;
-        
-        const xRatio = (item.x || 0) / viewportWidth;
-        if (xRatio >= rightMarginThreshold) {
-          // Dedupe by approximate Y position (same line)
-          const yBucket = Math.round((item.y || 0) / 10);
-          if (!seenY.has(yBucket)) {
-            seenY.add(yBucket);
-            count++;
-          }
-        }
-      }
-      return count;
+
+    // Extended ToC title variants
+    const TOC_TITLE_PHRASES = [
+      "table of contents", "contents", "detailed contents",
+      "summary of contents", "contents at a glance",
+      "contents of", "contents of volume", "contents of book", "contents of part",
+      "índice", "indice", "contenido", "tabla de contenido",
+      "sommaire", "table des matières",
+      "inhalt", "inhaltsverzeichnis",
+      "sommario", "indice dei contenuti",
+      "목차", "目录", "目錄"
+    ];
+
+    // Column headers often seen in ToCs
+    const TOC_COLUMN_HEADER_PHRASES = [
+      "page", "pages", "chapter", "chapters", "section", "sections",
+      "part", "parts", "title", "titles",
+      "pagina", "página", "paginas", "páginas",
+      "seite", "seiten", "页", "頁", "쪽", "ページ"
+    ];
+
+    // Pages that come right after ToC but should stop ToC parsing
+    const NON_TOC_PAGE_HEADERS = [
+      "list of figures", "list of tables", "list of illustrations",
+      "illustrations", "plates", "maps", "abbreviations",
+      "glossary", "index", "bibliography", "references",
+      "acknowledgements", "acknowledgments", "about the author"
+    ];
+
+    function makePhrasePattern(phrases) {
+      const escaped = phrases
+        .map(s => foldText(s))
+        .map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      return new RegExp("(?:^|\\b)(" + escaped.join("|") + ")(?:\\b|$)", "i");
     }
 
-    // Check for dot leaders in raw text (before stripNoise)
-    function containsDotLeaders(rawText) {
-      return /(\.{4,}|(\.\s){4,}|[·•]{3,})/.test(rawText || "");
-    }
+    const TOC_TITLE_PATTERN2 = makePhrasePattern(TOC_TITLE_PHRASES);
+    const TOC_COLHDR_PATTERN2 = makePhrasePattern(TOC_COLUMN_HEADER_PHRASES);
+    const NON_TOC_HDR_PATTERN2 = makePhrasePattern(NON_TOC_PAGE_HEADERS);
 
-    // Check for ToC keyword
-    function containsTocKeyword(rawText) {
-      return TOC_KEYWORD_PATTERN.test(rawText || "");
-    }
-
-    // Count short lines (ToC pages have many short lines, not wrapped prose)
-    function countShortLines(lines, avgLineLength) {
-      let shortCount = 0;
-      for (const ln of lines) {
-        const text = TocService.assembleLineTextFromItems(ln.items || []);
-        if (text.length < avgLineLength * 0.6 && text.length > 3) {
-          shortCount++;
-        }
-      }
-      return shortCount;
-    }
-
-    async function scoreTocPageImproved(pageNum) {
-      const { items, viewport } = await PdfService.getTextItemsWithViewport(pageNum, 1);
-      
-      if (!items.length) {
-        return { pageNum, score: 0, rightAligned: 0, hasKeyword: false, isEmpty: true };
-      }
-
-      // Build lines
+    // Build lines from items (same as extractor)
+    function buildLinesFromItems(items) {
       const hasAnyEol = items.some(it => it.hasEOL);
       let lines = [];
 
@@ -1641,84 +1642,247 @@
       } else {
         lines = TocService.groupItemsIntoLines(items);
       }
+      return lines;
+    }
 
-      // Build raw text (before stripNoise) for dot leader detection
-      const rawTextLines = lines.map(ln => TocService.assembleLineTextFromItems(ln.items));
-      const rawText = rawTextLines.join("\n");
-      
-      // Build clean text for keyword detection
-      const cleanText = rawTextLines.map(l => stripNoise(l)).join("\n");
+    function getHeaderTextFolded(lines, viewport) {
+      const h = viewport.height || 1;
+      const headerLines = lines.filter(ln => {
+        const y = (ln.items && ln.items.length) ? Math.min(...ln.items.map(i => i.y || 0)) : 999999;
+        return y <= h * 0.22;
+      });
+      const raw = headerLines
+        .slice(0, 8)
+        .map(ln => TocService.assembleLineTextFromItems(ln.items || []))
+        .join(" ");
+      return foldText(raw);
+    }
 
-      // === Scoring signals ===
+    // Detect page-last and page-first formats
+    const PAGE_LAST_RE = /(?:\s+)(\d+|[ivxlcdm]+)(?:\s*[.)\]]\s*)?$/i;
+    const PAGE_FIRST_RE = /^(\d+|[ivxlcdm]+)(?:\s*[.)\]]\s*)?\s+\p{L}/iu;
+
+    function getRightmostLocatorXRatio(lineItems, viewportWidth) {
+      if (!lineItems || !lineItems.length) return null;
+      const w = viewportWidth || 1;
+
+      let best = null;
+      for (const it of lineItems) {
+        const tok = normalizePageToken(it.str || "");
+        if (!tok) continue;
+        if (!isPageNumberToken(tok)) continue;
+
+        if (!best || (it.x || 0) > (best.x || 0)) best = it;
+      }
+
+      if (!best) return null;
+      const cx = (best.x || 0) + ((best.w || 0) * 0.5);
+      return cx / w;
+    }
+
+    // Cluster X ratios to find locator columns (works for multi-column ToCs)
+    function clusterXRatios(xRatios) {
+      const xs = (xRatios || []).filter(x => Number.isFinite(x) && x >= 0 && x <= 1);
+      if (xs.length < 4) return [];
+
+      const binW = 0.05;
+      const bins = new Map();
+      for (const x of xs) {
+        const b = Math.max(0, Math.min(19, Math.floor(x / binW)));
+        bins.set(b, (bins.get(b) || 0) + 1);
+      }
+
+      const keys = Array.from(bins.keys()).sort((a, b) => a - b);
+      const runs = [];
+      let run = null;
+
+      for (const k of keys) {
+        const c = bins.get(k) || 0;
+        if (!run) {
+          run = { start: k, end: k, count: c };
+          continue;
+        }
+        if (k === run.end + 1) {
+          run.end = k;
+          run.count += c;
+        } else {
+          runs.push(run);
+          run = { start: k, end: k, count: c };
+        }
+      }
+      if (run) runs.push(run);
+
+      const clusters = [];
+      for (const r of runs) {
+        if (r.count < 4) continue;
+        const lo = r.start * binW;
+        const hi = (r.end + 1) * binW;
+        const inRun = xs.filter(x => x >= lo && x < hi).sort((a, b) => a - b);
+        const spread = inRun.length ? (inRun[inRun.length - 1] - inRun[0]) : 1;
+        clusters.push({ count: r.count, lo, hi, spread, center: (lo + hi) / 2 });
+      }
+
+      clusters.sort((a, b) => (b.count - a.count) || (a.spread - b.spread));
+      return clusters.slice(0, 3);
+    }
+
+    // Indentation richness (hierarchical ToCs have multiple indent levels)
+    function indentationRichness(lines, viewportWidth) {
+      const w = viewportWidth || 1;
+      const buckets = new Set();
+
+      for (const ln of (lines || [])) {
+        const xs = (ln.items || []).map(i => i.x || 0);
+        if (!xs.length) continue;
+        const minX = Math.min(...xs) / w;
+        const b = Math.round(minX / 0.03);
+        buckets.add(b);
+      }
+      return buckets.size;
+    }
+
+    // Dot leaders in raw text (before stripNoise)
+    function containsDotLeadersRaw(rawText) {
+      return /(\.{4,}|(\.\s){4,}|[·•]{3,}|_{4,})/.test(rawText || "");
+    }
+
+    async function scoreTocPageRobust(pageNum) {
+      const { items, viewport } = await PdfService.getTextItemsWithViewport(pageNum, 1);
+
+      // Link density can identify modern clickable ToCs
+      const linkStats = await PdfService.getLinkStats(pageNum);
+
+      if (!items.length) {
+        const scoreFromLinks = Math.min(12, (linkStats.internal || 0) * 0.8);
+        return {
+          pageNum,
+          score: scoreFromLinks,
+          isEmpty: true,
+          hasTocTitle: false,
+          hasNonTocHeader: false,
+          locatorLines: 0,
+          linkInternal: linkStats.internal || 0
+        };
+      }
+
+      const lines = buildLinesFromItems(items);
+
+      // Build raw and clean text
+      const rawLines = lines.map(ln => TocService.assembleLineTextFromItems(ln.items || []));
+      const rawText = rawLines.join("\n");
+      const cleanLines = rawLines.map(l => stripNoise(l)).map(l => l.trim()).filter(Boolean);
+
+      // Header signals
+      const headerFolded = getHeaderTextFolded(lines, viewport);
+      const hasTocTitle = TOC_TITLE_PATTERN2.test(headerFolded) || TOC_KEYWORD_PATTERN.test(headerFolded);
+      const hasColumnHeader = TOC_COLHDR_PATTERN2.test(headerFolded);
+      const hasNonTocHeader = NON_TOC_HDR_PATTERN2.test(headerFolded) && !hasTocTitle;
+
+      // Locator line counts (page-last and page-first formats)
+      let pageLast = 0, pageFirst = 0;
+      const locatorXRatios = [];
+
+      for (const ln of lines) {
+        const t = stripNoise(TocService.assembleLineTextFromItems(ln.items || []));
+        if (!t) continue;
+
+        if (PAGE_LAST_RE.test(t)) {
+          pageLast++;
+          const xr = getRightmostLocatorXRatio(ln.items || [], viewport.width);
+          if (xr !== null) locatorXRatios.push(xr);
+          continue;
+        }
+        if (PAGE_FIRST_RE.test(t)) {
+          pageFirst++;
+          continue;
+        }
+      }
+
+      const locatorLines = pageLast + pageFirst;
+
+      // Alignment clusters for locator columns
+      const clusters = clusterXRatios(locatorXRatios);
+      let alignScore = 0;
+      for (const c of clusters) {
+        const tightness = Math.max(0, 0.08 - (c.spread || 0));
+        alignScore += Math.min(8, c.count * (tightness * 10));
+      }
+
+      // Dot leaders
+      const hasLeaders = containsDotLeadersRaw(rawText);
+
+      // Short line density vs prose
+      const avgLen = cleanLines.reduce((s, l) => s + l.length, 0) / Math.max(1, cleanLines.length);
+      const longLines = cleanLines.filter(l => l.length > Math.max(90, avgLen * 1.4)).length;
+      const proseHeavy = (cleanLines.length >= 8) && (longLines / Math.max(1, cleanLines.length) > 0.35) && locatorLines < 3;
+
+      // Indentation richness
+      const indentLevels = indentationRichness(lines, viewport.width);
+
+      // === Scoring ===
       let score = 0;
 
-      // 1. Right-aligned page tokens (STRONGEST signal)
-      const rightAligned = countRightAlignedPageTokens(items, viewport.width);
-      score += rightAligned * 1.5;
+      if (hasTocTitle) score += 12;
+      if (hasColumnHeader) score += 4;
+      if (hasLeaders) score += 4;
 
-      // 2. ToC keyword in header
-      const hasKeyword = containsTocKeyword(cleanText);
-      if (hasKeyword) score += 10;
+      score += pageLast * 0.9;
+      score += pageFirst * 0.7;
+      score += alignScore;
 
-      // 3. Dot leaders (check raw text, not cleaned)
-      if (containsDotLeaders(rawText)) score += 5;
+      // Internal links: modern clickable ToCs
+      score += Math.min(10, (linkStats.internal || 0) * 0.7);
 
-      // 4. Entry-like line endings (backup for string-based detection)
-      const cleanLines = cleanText.split('\n').filter(Boolean);
-      const endsWithPage = cleanLines.filter(l => 
-        /(?:\s+)(\d+|[ivxlcdm]+)\.?$/i.test(l)
-      ).length;
-      score += endsWithPage * 0.5;
+      // Hierarchy signal
+      if (indentLevels >= 3 && cleanLines.length >= 10) score += 2;
 
-      // 5. Short line density (ToC pages have many short lines)
-      const avgLen = rawTextLines.reduce((s, l) => s + l.length, 0) / Math.max(1, rawTextLines.length);
-      const shortLines = countShortLines(lines, avgLen);
-      if (shortLines > lines.length * 0.4) score += 3;
+      // Penalties
+      if (hasNonTocHeader) score -= 10;
+      if (proseHeavy) score -= 8;
 
-      // 6. High ratio of entry-like lines
-      const totalLines = cleanLines.length;
-      const entryRatio = totalLines ? ((rightAligned + endsWithPage) / totalLines) : 0;
-      if (entryRatio >= 0.3 && rightAligned >= 4) score += 5;
-
-      return { 
-        pageNum, 
-        score, 
-        rightAligned, 
-        hasKeyword, 
+      return {
+        pageNum,
+        score,
         isEmpty: false,
-        entryish: rightAligned + endsWithPage
+        hasTocTitle,
+        hasNonTocHeader,
+        locatorLines,
+        pageLast,
+        pageFirst,
+        alignClusters: clusters,
+        linkInternal: linkStats.internal || 0,
+        proseHeavy
       };
     }
 
-    // Kadane's algorithm to find best contiguous segment
-    function findBestContiguousSegment(scores, baseline) {
-      if (!scores.length) return null;
-      
-      // Convert scores to signal (score - baseline)
-      const signals = scores.map(s => ({
+    // Kadane-style best contiguous segment finder
+    function findBestContiguousSegmentByScore(scoredPages, baseline) {
+      if (!scoredPages.length) return null;
+
+      const signals = scoredPages.map(s => ({
         pageNum: s.pageNum,
-        signal: s.score - baseline,
-        originalScore: s.score,
-        hasKeyword: s.hasKeyword,
-        rightAligned: s.rightAligned
+        signal: (s.score || 0) - baseline,
+        originalScore: s.score || 0,
+        hasTocTitle: !!s.hasTocTitle,
+        locatorLines: s.locatorLines || 0,
+        linkInternal: s.linkInternal || 0
       }));
 
       let maxSum = -Infinity;
       let maxStart = 0;
       let maxEnd = 0;
-      
+
       let currentSum = 0;
       let currentStart = 0;
 
       for (let i = 0; i < signals.length; i++) {
         currentSum += signals[i].signal;
-        
+
         if (currentSum > maxSum) {
           maxSum = currentSum;
           maxStart = currentStart;
           maxEnd = i;
         }
-        
         if (currentSum < 0) {
           currentSum = 0;
           currentStart = i + 1;
@@ -1727,69 +1891,100 @@
 
       if (maxSum <= 0) return null;
 
-      // Soft expand: include adjacent pages with keyword or moderate score
+      // Expand around title pages or strong locator density
       while (maxStart > 0) {
         const prev = signals[maxStart - 1];
-        if (prev.hasKeyword || prev.originalScore >= baseline * 0.7) {
-          maxStart--;
-        } else break;
+        if (prev.hasTocTitle || prev.locatorLines >= 4 || prev.linkInternal >= 6) maxStart--;
+        else break;
       }
       while (maxEnd < signals.length - 1) {
         const next = signals[maxEnd + 1];
-        if (next.hasKeyword || next.originalScore >= baseline * 0.7) {
-          maxEnd++;
-        } else break;
+        if (next.hasTocTitle || next.locatorLines >= 4 || next.linkInternal >= 6) maxEnd++;
+        else break;
       }
 
-      return {
-        start: signals[maxStart].pageNum,
-        end: signals[maxEnd].pageNum,
-        totalSignal: maxSum
-      };
+      return { start: signals[maxStart].pageNum, end: signals[maxEnd].pageNum, totalSignal: maxSum };
     }
 
-    async function autoFindTocRangeImproved(scanStart, scanEnd) {
+    // Robust ToC range finder with better end detection
+    async function autoFindTocRangeRobust(scanStart, scanEnd, hardStopPage) {
       const scores = [];
       let emptyCount = 0;
 
-      for (let p = scanStart; p <= scanEnd; p++) {
-        const s = await scoreTocPageImproved(p);
+      const stopAt = Math.min(scanEnd, hardStopPage || scanEnd);
+
+      for (let p = scanStart; p <= stopAt; p++) {
+        const s = await scoreTocPageRobust(p);
         scores.push(s);
         if (s.isEmpty) emptyCount++;
       }
 
-      // If mostly empty pages, try OCR sniff
-      if (emptyCount > (scanEnd - scanStart) * 0.8) {
-        const foundPage = await OcrService.sniffTocInScannedPdf(scanStart, scanEnd);
-        if (foundPage) {
-          return { start: foundPage, end: foundPage };
-        }
+      // Mostly no embedded text, try OCR sniff
+      if (emptyCount > (stopAt - scanStart + 1) * 0.8) {
+        const foundPage = await OcrService.sniffTocInScannedPdf(scanStart, stopAt);
+        if (foundPage) return { start: foundPage, end: foundPage };
         return null;
       }
 
-      // Calculate baseline as median of non-empty scores
-      const nonEmptyScores = scores.filter(s => !s.isEmpty).map(s => s.score);
-      nonEmptyScores.sort((a, b) => a - b);
-      const baseline = nonEmptyScores.length 
-        ? nonEmptyScores[Math.floor(nonEmptyScores.length / 2)] 
-        : 3;
+      // Baseline as median score
+      const vals = scores.map(s => s.score).filter(v => Number.isFinite(v)).sort((a, b) => a - b);
+      const baseline = vals.length ? vals[Math.floor(vals.length / 2)] : 5;
+      const seg = findBestContiguousSegmentByScore(scores, Math.max(5, baseline));
 
-      // Find best contiguous segment using Kadane's algorithm
-      const segment = findBestContiguousSegment(scores, Math.max(baseline, 3));
-      
-      if (!segment) {
-        // Fallback: find single best page
+      // Prefer explicit ToC title page as start
+      let start = null;
+      for (const s of scores) {
+        if (s.hasTocTitle || (s.linkInternal >= 8 && s.score >= 6)) {
+          start = s.pageNum;
+          break;
+        }
+      }
+      if (!start && seg) start = seg.start;
+      if (!start) {
         let best = scores[0];
-        for (const s of scores) {
-          if (s.score > best.score) best = s;
-        }
-        if (best && best.score >= 5) {
-          return { start: best.pageNum, end: best.pageNum };
-        }
+        for (const s of scores) if ((s.score || 0) > (best.score || 0)) best = s;
+        if (best && best.score >= 8) return { start: best.pageNum, end: best.pageNum };
         return null;
       }
 
-      return segment;
+      // End detection: walk forward until 2 consecutive non-ToC-like pages
+      const TOC_LIKE_SCORE = 8;
+      let end = start;
+      let lowRun = 0;
+
+      const byPage = new Map(scores.map(s => [s.pageNum, s]));
+
+      for (let p = start; p <= stopAt; p++) {
+        const s = byPage.get(p) || { score: 0, locatorLines: 0, linkInternal: 0, hasNonTocHeader: false, hasTocTitle: false };
+
+        // Stop before "List of Figures" etc.
+        if (p !== start && s.hasNonTocHeader) break;
+
+        const tocLike =
+          (s.score >= TOC_LIKE_SCORE) ||
+          (s.hasTocTitle) ||
+          (s.locatorLines >= 5) ||
+          (s.linkInternal >= 8);
+
+        if (tocLike) {
+          end = p;
+          lowRun = 0;
+        } else {
+          lowRun++;
+          if (lowRun >= 2) break;
+        }
+      }
+
+      // Soft include prior page if it's a title page overflow
+      while (start > scanStart) {
+        const prev = byPage.get(start - 1);
+        if (!prev) break;
+        if (prev.hasTocTitle) { start--; continue; }
+        if (prev.score >= TOC_LIKE_SCORE * 0.8 && !prev.proseHeavy) { start--; continue; }
+        break;
+      }
+
+      return { start, end };
     }
 
     async function getHeaderFooterNumberCandidates(pageNum) {
@@ -1827,26 +2022,26 @@
         const total = AppState.pdf.pageCount;
         const maxScan = Math.min(50, total);
 
-        // === 1. Check PDF outline for ToC entry first ===
+        // 1. Check PDF outline for ToC entry
         const outlineHint = await findTocFromOutline();
         let tocFromOutline = null;
         let contentStartFromOutline = null;
         
         if (outlineHint) {
           if (outlineHint.type === "toc") {
-            tocFromOutline = outlineHint.pageIndex + 1; // 1-based
+            tocFromOutline = outlineHint.pageIndex + 1;
           } else if (outlineHint.type === "content_start") {
             contentStartFromOutline = outlineHint.pageIndex + 1;
           }
         }
 
-        // === 2. Use page labels as boundary signal ===
+        // 2. Page labels as boundary signal
         let labelBoundary = null;
         if (AppState.pdf.romanToArabicBoundary !== null) {
-          labelBoundary = AppState.pdf.romanToArabicBoundary; // 0-based index where Arabic starts
+          labelBoundary = AppState.pdf.romanToArabicBoundary;
         }
 
-        // === 3. Offset detection via header/footer page numbers ===
+        // 3. Offset detection via header/footer page numbers
         let detectedOffset = null;
 
         for (let i = 1; i <= maxScan - 2; i++) {
@@ -1867,9 +2062,8 @@
           if (detectedOffset) break;
         }
 
-        // Offset fallback from page labels
         if (!detectedOffset && labelBoundary !== null) {
-          detectedOffset = labelBoundary + 1; // Convert to 1-based PDF page
+          detectedOffset = labelBoundary + 1;
         }
 
         if (!detectedOffset && AppState.pdf.pageLabels && AppState.pdf.pageLabels.length) {
@@ -1881,16 +2075,14 @@
           }
         }
 
-        // === 4. ToC range detection ===
+        // 4. ToC range detection using robust finder
         let tocStart = null;
         let tocEnd = null;
 
-        // If outline gave us ToC page, use that as starting point
         if (tocFromOutline) {
           tocStart = tocFromOutline;
-          // Scan a few pages after to find end
           const scanEnd = Math.min(total, tocFromOutline + 10);
-          const range = await autoFindTocRangeImproved(tocFromOutline, scanEnd);
+          const range = await autoFindTocRangeRobust(tocFromOutline, scanEnd, contentStartFromOutline || detectedOffset || scanEnd);
           if (range) {
             tocStart = range.start;
             tocEnd = range.end;
@@ -1898,10 +2090,8 @@
             tocEnd = tocFromOutline;
           }
         } else {
-          // Determine search boundary
           let searchEnd = maxScan;
           
-          // Narrow search if we have boundary hints
           if (labelBoundary !== null) {
             searchEnd = Math.min(searchEnd, labelBoundary + 3);
           }
@@ -1912,15 +2102,13 @@
             searchEnd = Math.min(searchEnd, detectedOffset + 3);
           }
 
-          // Use improved scoring with Kadane's algorithm
-          const tocRange = await autoFindTocRangeImproved(1, searchEnd);
+          const tocRange = await autoFindTocRangeRobust(1, searchEnd, contentStartFromOutline || detectedOffset || searchEnd);
           
           if (tocRange) {
             tocStart = tocRange.start;
             tocEnd = tocRange.end;
           } else if (searchEnd < maxScan) {
-            // Retry with full range
-            const fullRange = await autoFindTocRangeImproved(1, maxScan);
+            const fullRange = await autoFindTocRangeRobust(1, maxScan, null);
             if (fullRange) {
               tocStart = fullRange.start;
               tocEnd = fullRange.end;
@@ -1928,7 +2116,7 @@
           }
         }
 
-        // === 5. Apply results ===
+        // 5. Apply results
         const parts = [];
         if (detectedOffset) {
           El.pageOffset.value = detectedOffset;
