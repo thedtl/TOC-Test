@@ -407,7 +407,9 @@
         filename: "",
         pageCount: 0,
         pageLabels: null,
-        pageLabelIndexByLabel: null
+        pageLabelIndexByLabel: null,
+        romanToArabicBoundary: null, // Page index where labels switch from Roman to Arabic
+        outline: null // Cached outline from getOutline()
       },
       toc: {
         startPage: 1,
@@ -529,6 +531,11 @@
       return /^[ivxlcdm]+$/i.test(token || "");
     }
 
+    function isPageNumberToken(token) {
+      const t = (token || "").trim();
+      return /^\d+$/.test(t) || isRomanNumeralToken(t);
+    }
+
     function romanToInt(roman) {
       const s = String(roman || "").toLowerCase();
       if (!/^[ivxlcdm]+$/.test(s)) return NaN;
@@ -544,7 +551,6 @@
     }
 
     function foldText(s) {
-      // Safari safe diacritic fold
       const nfd = (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       return nfd
         .toLowerCase()
@@ -561,6 +567,7 @@
       return p + ": " + t;
     }
 
+    // Strip noise for parsing (removes dot leaders)
     function stripNoise(s) {
       return String(s || "")
         .replace(/(?:\s*[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]\s*){4,}/gu, " ")
@@ -578,6 +585,18 @@
       "introducao", "prefacio", "prologo"
     ]);
 
+    // ToC keywords in multiple languages
+    const TOC_KEYWORDS = [
+      "table of contents", "contents", "índice", "indice", "contenido",
+      "sommaire", "inhalt", "inhaltsverzeichnis", "capitoli", "sommario",
+      "tavola", "agenda", "목차", "目录", "目錄"
+    ];
+
+    const TOC_KEYWORD_PATTERN = new RegExp(
+      "(" + TOC_KEYWORDS.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join("|") + ")\\b",
+      "i"
+    );
+
     function looksLikeSubchapter(title) {
       if (/^\s*\d+\.\d+(?:\.\d+)*\s+/.test(title || "")) return true;
       if (/^\s*[A-Z]\.\d+(?:\.\d+)*\s+/i.test(title || "")) return true;
@@ -585,7 +604,6 @@
     }
 
     function repairTrailingPageNumber(line) {
-      // Fix OCR split digits only at the very end: "Title 1 0" -> "Title 10"
       const tokens = (line || "").trim().split(/\s+/).filter(Boolean);
       if (tokens.length < 3) return (line || "").trim();
       let i = tokens.length - 1;
@@ -596,7 +614,6 @@
         i--;
       }
       if (take.length >= 2) {
-        // Do not swallow a chapter number if the token before the digit group is also a single digit.
         if (i >= 0 && /^\d$/.test(tokens[i])) return (line || "").trim();
         const joined = take.reverse().join("");
         const rebuilt = tokens.slice(0, i + 1).concat([joined]).join(" ");
@@ -617,7 +634,6 @@
       if (AppState.history.isUndoRedo || AppState.history.isBulkEdit) return;
       const snapshot = JSON.stringify(AppState.toc.chapters || []);
       
-      // Deduplicate consecutive states
       if (AppState.history.index >= 0 && AppState.history.stack[AppState.history.index] === snapshot) {
         return;
       }
@@ -676,13 +692,14 @@
       async function loadFromBytes(bytes, filename) {
         AppState.pdf.bytes = bytes;
         AppState.pdf.filename = filename || "document.pdf";
-        // Pass bytes directly (no slice) to save memory
         AppState.pdf.doc = await pdfjsLib.getDocument({ data: bytes }).promise;
         AppState.pdf.pageCount = AppState.pdf.doc.numPages;
 
-        // Page labels (optional)
+        // Page labels
         AppState.pdf.pageLabels = null;
         AppState.pdf.pageLabelIndexByLabel = null;
+        AppState.pdf.romanToArabicBoundary = null;
+        
         try {
           const labels = await AppState.pdf.doc.getPageLabels();
           if (Array.isArray(labels) && labels.length) {
@@ -693,7 +710,25 @@
               if (lbl && !m.has(lbl)) m.set(lbl, i);
             }
             AppState.pdf.pageLabelIndexByLabel = m;
+            
+            // Detect Roman → Arabic boundary
+            let foundRoman = false;
+            for (let i = 0; i < labels.length; i++) {
+              const lbl = String(labels[i] || "").trim();
+              if (isRomanNumeralToken(lbl)) {
+                foundRoman = true;
+              } else if (foundRoman && /^\d+$/.test(lbl)) {
+                AppState.pdf.romanToArabicBoundary = i;
+                break;
+              }
+            }
           }
+        } catch (e) {}
+
+        // Get outline (bookmarks)
+        AppState.pdf.outline = null;
+        try {
+          AppState.pdf.outline = await AppState.pdf.doc.getOutline();
         } catch (e) {}
 
         // UI defaults
@@ -715,7 +750,6 @@
         AppState.ui.currentPreviewPage = 1;
         await renderPreview(1);
 
-        // Initialize chapters list once
         if (!AppState.toc.chapters.length) {
           setChapters([{ title: "", page: "" }], { saveHistory: true });
         }
@@ -817,37 +851,93 @@
         return canvas;
       }
 
+      // Get page index from outline destination
+      async function getPageIndexFromDest(dest) {
+        if (!dest) return null;
+        try {
+          let resolvedDest = dest;
+          if (typeof dest === "string") {
+            resolvedDest = await AppState.pdf.doc.getDestination(dest);
+          }
+          if (Array.isArray(resolvedDest) && resolvedDest[0]) {
+            const pageIndex = await AppState.pdf.doc.getPageIndex(resolvedDest[0]);
+            return pageIndex;
+          }
+        } catch (e) {}
+        return null;
+      }
+
       return {
         loadFromBytes,
         loadFromDropboxUrl,
         renderPreview,
         getTextItemsWithViewport,
-        renderPageToCanvas
+        renderPageToCanvas,
+        getPageIndexFromDest
       };
     })();
 
     /**********************************************************************
-     * 6) Page token to PDF index mapping (Arabic + Roman + labels + inference)
+     * 6) Outline (bookmark) analysis - NEW
+     **********************************************************************/
+    async function findTocFromOutline() {
+      const outline = AppState.pdf.outline;
+      if (!outline || !outline.length) return null;
+
+      // Walk outline looking for ToC-like entries
+      async function walkOutline(items, depth) {
+        for (const item of items) {
+          const title = foldText(item.title || "");
+          
+          // Check if this is a ToC/Contents entry
+          if (TOC_KEYWORD_PATTERN.test(title) || title === "contents" || title === "toc") {
+            const pageIndex = await PdfService.getPageIndexFromDest(item.dest);
+            if (pageIndex !== null) {
+              return { type: "toc", pageIndex, title: item.title };
+            }
+          }
+          
+          // Check for chapter/introduction entries (ToC must end before these)
+          const isMainContent = /^(chapter|introduction|foreword|preface|part)\s*\d*$/i.test(title) ||
+                               MAIN_CONTENT_HEADINGS.has(title);
+          if (isMainContent && depth === 0) {
+            const pageIndex = await PdfService.getPageIndexFromDest(item.dest);
+            if (pageIndex !== null) {
+              return { type: "content_start", pageIndex, title: item.title };
+            }
+          }
+          
+          // Recurse into children
+          if (item.items && item.items.length) {
+            const found = await walkOutline(item.items, depth + 1);
+            if (found) return found;
+          }
+        }
+        return null;
+      }
+
+      return await walkOutline(outline, 0);
+    }
+
+    /**********************************************************************
+     * 7) Page token to PDF index mapping
      **********************************************************************/
     function pageTokenToPdfIndex(token) {
       const t = normalizePageToken(token).toLowerCase();
       if (!t) return null;
 
-      // 1) If the PDF provides page labels, trust them first.
       const m = AppState.pdf.pageLabelIndexByLabel;
       if (m && m.has(t)) return m.get(t);
 
       const total = AppState.pdf.pageCount || 0;
       const pageOffset = safeParseInt(El.pageOffset.value) || 1;
 
-      // 2) Arabic fallback via offset
       if (/^\d+$/.test(t)) {
         const pageNum = safeParseInt(t);
         const pdfIndex = (pageNum - 1) + (pageOffset - 1);
         return (pdfIndex >= 0 && pdfIndex < total) ? pdfIndex : null;
       }
 
-      // 3) Roman fallback only if we have a reliable anchor
       if (isRomanNumeralToken(t)) {
         const rv = romanToInt(t);
         const maxRoman = AppState.toc.detectedMaxRoman || 0;
@@ -861,7 +951,7 @@
     }
 
     /**********************************************************************
-     * 7) Text extraction and parsing
+     * 8) Text extraction and parsing
      **********************************************************************/
     const TocService = (function(){
       function groupItemsIntoLines(items) {
@@ -1061,7 +1151,7 @@
     })();
 
     /**********************************************************************
-     * 8) OCR service
+     * 9) OCR service
      **********************************************************************/
     const OcrService = (function(){
       async function ensureScheduler(langsArray, oem, statusCb) {
@@ -1279,7 +1369,7 @@
           const canvas = await PdfService.renderPageToCanvas(p, 100);
           const res = await scheduler.addJob("recognize", canvas);
           const txt = (res.data.text || "").toLowerCase();
-          if (/(contents|índice|indice|inhalt|sommaire)/.test(txt)) {
+          if (TOC_KEYWORD_PATTERN.test(txt)) {
             return p;
           }
         }
@@ -1302,7 +1392,7 @@
     });
 
     /**********************************************************************
-     * 9) UI state: chapters list rendering and validation
+     * 10) UI state: chapters list rendering and validation
      **********************************************************************/
     function resetChaptersAndHistory() {
       AppState.toc.chapters = [];
@@ -1391,7 +1481,6 @@
         syncToState(true);
       };
 
-      // drag reorder
       handle.addEventListener("dragstart", (e) => {
         row.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
@@ -1476,43 +1565,62 @@
     }
 
     /**********************************************************************
-     * 10) Offset detection and ToC range detection (automation)
+     * 11) IMPROVED ToC detection with geometry-based scoring
      **********************************************************************/
-    async function getHeaderFooterNumberCandidates(pageNum) {
-      const page = await AppState.pdf.doc.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      const viewport = page.getViewport({ scale: 1 });
-      const h = viewport.height;
-
-      const isHeader = (y) => y < h * 0.15;
-      const isFooter = (y) => y > h * 0.85;
-
-      return (textContent.items || [])
-        .filter(item => item && item.transform && typeof item.str === "string")
-        .map(item => {
-          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-          const y = tx[5];
-          const str = item.str.trim().replace(/^[-[\]\s]+|[-[\]\s]+$/g, "");
-          return { y, str };
-        })
-        .filter(o => (isHeader(o.y) || isFooter(o.y)) && /^\d+$/.test(o.str))
-        .map(o => ({ val: parseInt(o.str, 10), y: o.y }));
+    
+    // Count right-aligned page number tokens using geometry
+    function countRightAlignedPageTokens(items, viewportWidth) {
+      const rightMarginThreshold = 0.72; // x/width >= 0.72 considered right-aligned
+      let count = 0;
+      const seenY = new Set();
+      
+      for (const item of items) {
+        const str = String(item.str || "").trim();
+        if (!isPageNumberToken(str)) continue;
+        
+        const xRatio = (item.x || 0) / viewportWidth;
+        if (xRatio >= rightMarginThreshold) {
+          // Dedupe by approximate Y position (same line)
+          const yBucket = Math.round((item.y || 0) / 10);
+          if (!seenY.has(yBucket)) {
+            seenY.add(yBucket);
+            count++;
+          }
+        }
+      }
+      return count;
     }
 
-    function containsTocKeyword(rawText) {
-      return /(table of contents|contents|índice|indice|contenido|sommaire|inhalt|capitoli|sommario|tavola|agenda)\b/i
-        .test(rawText || "");
-    }
-
+    // Check for dot leaders in raw text (before stripNoise)
     function containsDotLeaders(rawText) {
-      return /(\.{4,}|(\.\s){6,})/.test(rawText || "");
+      return /(\.{4,}|(\.\s){4,}|[·•]{3,})/.test(rawText || "");
     }
 
-    async function scoreTocPage(pageNum) {
+    // Check for ToC keyword
+    function containsTocKeyword(rawText) {
+      return TOC_KEYWORD_PATTERN.test(rawText || "");
+    }
+
+    // Count short lines (ToC pages have many short lines, not wrapped prose)
+    function countShortLines(lines, avgLineLength) {
+      let shortCount = 0;
+      for (const ln of lines) {
+        const text = TocService.assembleLineTextFromItems(ln.items || []);
+        if (text.length < avgLineLength * 0.6 && text.length > 3) {
+          shortCount++;
+        }
+      }
+      return shortCount;
+    }
+
+    async function scoreTocPageImproved(pageNum) {
       const { items, viewport } = await PdfService.getTextItemsWithViewport(pageNum, 1);
       
-      if (!items.length) return { pageNum, score: 0, entryish: 0, hasKeyword: false, isEmpty: true };
+      if (!items.length) {
+        return { pageNum, score: 0, rightAligned: 0, hasKeyword: false, isEmpty: true };
+      }
 
+      // Build lines
       const hasAnyEol = items.some(it => it.hasEOL);
       let lines = [];
 
@@ -1534,88 +1642,175 @@
         lines = TocService.groupItemsIntoLines(items);
       }
 
-      const columns = TocService.splitColumns(lines, viewport);
+      // Build raw text (before stripNoise) for dot leader detection
+      const rawTextLines = lines.map(ln => TocService.assembleLineTextFromItems(ln.items));
+      const rawText = rawTextLines.join("\n");
       
-      let totalEntryish = 0;
-      let fullRawText = "";
+      // Build clean text for keyword detection
+      const cleanText = rawTextLines.map(l => stripNoise(l)).join("\n");
 
-      for (const col of columns) {
-          const textLines = col
-            .map(ln => stripNoise(TocService.assembleLineTextFromItems(ln.items)))
-            .filter(Boolean);
-          
-          fullRawText += textLines.join("\n") + "\n";
-
-          const endsWithPage = textLines.filter(l =>
-            /(?:\s*[._·•]\s*)*(\d+|[ivxlcdm]+)\.?$/i.test(l)
-          ).length;
-
-          const startsWithPage = textLines.filter(l =>
-            /^(\d+|[ivxlcdm]+)\b/i.test(l)
-          ).length;
-
-          totalEntryish += Math.max(endsWithPage, startsWithPage);
-      }
-
+      // === Scoring signals ===
       let score = 0;
-      score += totalEntryish * 1.0;
 
-      const hasKeyword = containsTocKeyword(fullRawText);
-      if (hasKeyword) score += 8;
+      // 1. Right-aligned page tokens (STRONGEST signal)
+      const rightAligned = countRightAlignedPageTokens(items, viewport.width);
+      score += rightAligned * 1.5;
 
-      if (containsDotLeaders(fullRawText)) score += 3;
+      // 2. ToC keyword in header
+      const hasKeyword = containsTocKeyword(cleanText);
+      if (hasKeyword) score += 10;
 
-      const totalLines = fullRawText.split('\n').filter(Boolean).length;
-      const ratio = totalLines ? (totalEntryish / totalLines) : 0;
-      if (totalEntryish >= 6 && ratio >= 0.35) score += 6;
+      // 3. Dot leaders (check raw text, not cleaned)
+      if (containsDotLeaders(rawText)) score += 5;
 
-      return { pageNum, score, entryish: totalEntryish, hasKeyword, isEmpty: false };
+      // 4. Entry-like line endings (backup for string-based detection)
+      const cleanLines = cleanText.split('\n').filter(Boolean);
+      const endsWithPage = cleanLines.filter(l => 
+        /(?:\s+)(\d+|[ivxlcdm]+)\.?$/i.test(l)
+      ).length;
+      score += endsWithPage * 0.5;
+
+      // 5. Short line density (ToC pages have many short lines)
+      const avgLen = rawTextLines.reduce((s, l) => s + l.length, 0) / Math.max(1, rawTextLines.length);
+      const shortLines = countShortLines(lines, avgLen);
+      if (shortLines > lines.length * 0.4) score += 3;
+
+      // 6. High ratio of entry-like lines
+      const totalLines = cleanLines.length;
+      const entryRatio = totalLines ? ((rightAligned + endsWithPage) / totalLines) : 0;
+      if (entryRatio >= 0.3 && rightAligned >= 4) score += 5;
+
+      return { 
+        pageNum, 
+        score, 
+        rightAligned, 
+        hasKeyword, 
+        isEmpty: false,
+        entryish: rightAligned + endsWithPage
+      };
     }
 
-    async function autoFindTocRange(scanStart, scanEnd) {
+    // Kadane's algorithm to find best contiguous segment
+    function findBestContiguousSegment(scores, baseline) {
+      if (!scores.length) return null;
+      
+      // Convert scores to signal (score - baseline)
+      const signals = scores.map(s => ({
+        pageNum: s.pageNum,
+        signal: s.score - baseline,
+        originalScore: s.score,
+        hasKeyword: s.hasKeyword,
+        rightAligned: s.rightAligned
+      }));
+
+      let maxSum = -Infinity;
+      let maxStart = 0;
+      let maxEnd = 0;
+      
+      let currentSum = 0;
+      let currentStart = 0;
+
+      for (let i = 0; i < signals.length; i++) {
+        currentSum += signals[i].signal;
+        
+        if (currentSum > maxSum) {
+          maxSum = currentSum;
+          maxStart = currentStart;
+          maxEnd = i;
+        }
+        
+        if (currentSum < 0) {
+          currentSum = 0;
+          currentStart = i + 1;
+        }
+      }
+
+      if (maxSum <= 0) return null;
+
+      // Soft expand: include adjacent pages with keyword or moderate score
+      while (maxStart > 0) {
+        const prev = signals[maxStart - 1];
+        if (prev.hasKeyword || prev.originalScore >= baseline * 0.7) {
+          maxStart--;
+        } else break;
+      }
+      while (maxEnd < signals.length - 1) {
+        const next = signals[maxEnd + 1];
+        if (next.hasKeyword || next.originalScore >= baseline * 0.7) {
+          maxEnd++;
+        } else break;
+      }
+
+      return {
+        start: signals[maxStart].pageNum,
+        end: signals[maxEnd].pageNum,
+        totalSignal: maxSum
+      };
+    }
+
+    async function autoFindTocRangeImproved(scanStart, scanEnd) {
       const scores = [];
       let emptyCount = 0;
 
       for (let p = scanStart; p <= scanEnd; p++) {
-        const s = await scoreTocPage(p);
+        const s = await scoreTocPageImproved(p);
         scores.push(s);
         if (s.isEmpty) emptyCount++;
       }
 
-      // If mostly empty, try scanned PDF fallback
+      // If mostly empty pages, try OCR sniff
       if (emptyCount > (scanEnd - scanStart) * 0.8) {
         const foundPage = await OcrService.sniffTocInScannedPdf(scanStart, scanEnd);
         if (foundPage) {
-          return { start: foundPage, end: foundPage, best: { pageNum: foundPage, score: 10 } };
+          return { start: foundPage, end: foundPage };
         }
+        return null;
       }
 
-      let best = scores[0] || null;
-      for (const s of scores) if (!best || s.score > best.score) best = s;
-      if (!best) return null;
+      // Calculate baseline as median of non-empty scores
+      const nonEmptyScores = scores.filter(s => !s.isEmpty).map(s => s.score);
+      nonEmptyScores.sort((a, b) => a - b);
+      const baseline = nonEmptyScores.length 
+        ? nonEmptyScores[Math.floor(nonEmptyScores.length / 2)] 
+        : 3;
 
-      const minOk = (best.entryish >= 5) || (best.hasKeyword && best.score >= 6);
-      if (!minOk) return null;
-
-      const cutoff = Math.max(3, Math.floor(best.score * 0.55));
-      let start = best.pageNum;
-      let end = best.pageNum;
-      const byPage = new Map(scores.map(s => [s.pageNum, s]));
-
-      while (start > scanStart) {
-        const prev = byPage.get(start - 1);
-        if (!prev) break;
-        if (prev.score >= cutoff) start -= 1;
-        else break;
-      }
-      while (end < scanEnd) {
-        const nxt = byPage.get(end + 1);
-        if (!nxt) break;
-        if (nxt.score >= cutoff) end += 1;
-        else break;
+      // Find best contiguous segment using Kadane's algorithm
+      const segment = findBestContiguousSegment(scores, Math.max(baseline, 3));
+      
+      if (!segment) {
+        // Fallback: find single best page
+        let best = scores[0];
+        for (const s of scores) {
+          if (s.score > best.score) best = s;
+        }
+        if (best && best.score >= 5) {
+          return { start: best.pageNum, end: best.pageNum };
+        }
+        return null;
       }
 
-      return { start, end, best };
+      return segment;
+    }
+
+    async function getHeaderFooterNumberCandidates(pageNum) {
+      const page = await AppState.pdf.doc.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const viewport = page.getViewport({ scale: 1 });
+      const h = viewport.height;
+
+      const isHeader = (y) => y < h * 0.15;
+      const isFooter = (y) => y > h * 0.85;
+
+      return (textContent.items || [])
+        .filter(item => item && item.transform && typeof item.str === "string")
+        .map(item => {
+          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+          const y = tx[5];
+          const str = item.str.trim().replace(/^[-[\]\s]+|[-[\]\s]+$/g, "");
+          return { y, str };
+        })
+        .filter(o => (isHeader(o.y) || isFooter(o.y)) && /^\d+$/.test(o.str))
+        .map(o => ({ val: parseInt(o.str, 10), y: o.y }));
     }
 
     async function autoDetectStructure() {
@@ -1632,7 +1827,26 @@
         const total = AppState.pdf.pageCount;
         const maxScan = Math.min(50, total);
 
-        // 1) Offset detection via 3 page sequence in header/footer
+        // === 1. Check PDF outline for ToC entry first ===
+        const outlineHint = await findTocFromOutline();
+        let tocFromOutline = null;
+        let contentStartFromOutline = null;
+        
+        if (outlineHint) {
+          if (outlineHint.type === "toc") {
+            tocFromOutline = outlineHint.pageIndex + 1; // 1-based
+          } else if (outlineHint.type === "content_start") {
+            contentStartFromOutline = outlineHint.pageIndex + 1;
+          }
+        }
+
+        // === 2. Use page labels as boundary signal ===
+        let labelBoundary = null;
+        if (AppState.pdf.romanToArabicBoundary !== null) {
+          labelBoundary = AppState.pdf.romanToArabicBoundary; // 0-based index where Arabic starts
+        }
+
+        // === 3. Offset detection via header/footer page numbers ===
         let detectedOffset = null;
 
         for (let i = 1; i <= maxScan - 2; i++) {
@@ -1653,7 +1867,11 @@
           if (detectedOffset) break;
         }
 
-        // 1b) Offset fallback from PageLabels
+        // Offset fallback from page labels
+        if (!detectedOffset && labelBoundary !== null) {
+          detectedOffset = labelBoundary + 1; // Convert to 1-based PDF page
+        }
+
         if (!detectedOffset && AppState.pdf.pageLabels && AppState.pdf.pageLabels.length) {
           const idx = AppState.pdf.pageLabels.findIndex(l => /^\d+$/.test(String(l || "").trim()));
           if (idx !== -1) {
@@ -1663,20 +1881,54 @@
           }
         }
 
-        // 2) ToC range detection
+        // === 4. ToC range detection ===
         let tocStart = null;
         let tocEnd = null;
-        const preferredEnd = detectedOffset ? Math.min(maxScan, detectedOffset + 2) : Math.min(maxScan, 20);
 
-        let tocRange = await autoFindTocRange(1, preferredEnd);
-        if (!tocRange) tocRange = await autoFindTocRange(1, maxScan);
+        // If outline gave us ToC page, use that as starting point
+        if (tocFromOutline) {
+          tocStart = tocFromOutline;
+          // Scan a few pages after to find end
+          const scanEnd = Math.min(total, tocFromOutline + 10);
+          const range = await autoFindTocRangeImproved(tocFromOutline, scanEnd);
+          if (range) {
+            tocStart = range.start;
+            tocEnd = range.end;
+          } else {
+            tocEnd = tocFromOutline;
+          }
+        } else {
+          // Determine search boundary
+          let searchEnd = maxScan;
+          
+          // Narrow search if we have boundary hints
+          if (labelBoundary !== null) {
+            searchEnd = Math.min(searchEnd, labelBoundary + 3);
+          }
+          if (contentStartFromOutline) {
+            searchEnd = Math.min(searchEnd, contentStartFromOutline);
+          }
+          if (detectedOffset) {
+            searchEnd = Math.min(searchEnd, detectedOffset + 3);
+          }
 
-        if (tocRange) {
-          tocStart = tocRange.start;
-          tocEnd = tocRange.end;
+          // Use improved scoring with Kadane's algorithm
+          const tocRange = await autoFindTocRangeImproved(1, searchEnd);
+          
+          if (tocRange) {
+            tocStart = tocRange.start;
+            tocEnd = tocRange.end;
+          } else if (searchEnd < maxScan) {
+            // Retry with full range
+            const fullRange = await autoFindTocRangeImproved(1, maxScan);
+            if (fullRange) {
+              tocStart = fullRange.start;
+              tocEnd = fullRange.end;
+            }
+          }
         }
 
-        // Apply
+        // === 5. Apply results ===
         const parts = [];
         if (detectedOffset) {
           El.pageOffset.value = detectedOffset;
@@ -1712,7 +1964,7 @@
     }
 
     /**********************************************************************
-     * 11) ToC extraction pipeline
+     * 12) ToC extraction pipeline
      **********************************************************************/
     function showExtractStatus(kind, msg) {
       El.extractStatus.classList.remove("hidden");
@@ -1734,7 +1986,6 @@
       const out = [];
       for (const e of (entries || [])) {
         if (!e || !e.title || !e.page) continue;
-        // Always skip subchapters
         if (looksLikeSubchapter(e.title)) continue;
         out.push({ title: e.title, page: e.page });
       }
@@ -1791,7 +2042,6 @@
         return;
       }
 
-      // Safety cap
       if ((endPage - startPage + 1) > 15 && !confirm("You are about to OCR " + (endPage - startPage + 1) + " pages. This may crash the browser tab. Continue?")) {
         setBusy(false);
         return;
@@ -1841,19 +2091,15 @@
     }
 
     async function autoParseToc() {
-      // 1) Try text extraction
       const okText = await extractUsingTextExtraction();
       if (okText) return true;
 
-      // 2) Optional OCR fallback
       const wantOcr = !!El.autoOcrFallback.checked;
       if (!wantOcr) return false;
 
-      // 3) Try OCR with current settings (default adaptive)
       const okOcr = await extractUsingOcrFromPdf();
       if (okOcr) return true;
 
-      // 4) If adaptive failed (0 entries), try Grayscale once automatically
       showExtractStatus("processing", "Adaptive OCR yielded no results. Retrying with Grayscale...");
       const okGray = await extractUsingOcrFromPdf({
           langs: El.ocrLang.value,
@@ -1863,7 +2109,7 @@
     }
 
     /**********************************************************************
-     * 12) Text fallback parser
+     * 13) Text fallback parser
      **********************************************************************/
     function parseTocTextFallback(rawText) {
       const lines = normalizeNewlines(rawText || "")
@@ -1932,7 +2178,6 @@
           continue;
         }
 
-        // standalone page token
         if (/^(\d+|[ivxlcdm]+)\.?$/i.test(s)) {
           if (buffer || prefixA || prefixB) {
             const page = normalizePageToken(s);
@@ -1947,7 +2192,6 @@
           continue;
         }
 
-        // inline: title ... page
         const m = s.match(/^(.+?)\s+(\d+|[ivxlcdm]+)[.)\]]?$/i);
         if (m) {
           const t = cleanTitle(m[1]);
@@ -1970,7 +2214,7 @@
     }
 
     /**********************************************************************
-     * 13) Front matter display
+     * 14) Front matter display
      **********************************************************************/
     function updateFrontMatterDisplay() {
       const offset = safeParseInt(El.pageOffset.value) || 1;
@@ -1999,7 +2243,7 @@
     });
 
     /**********************************************************************
-     * 14) Preview helpers
+     * 15) Preview helpers
      **********************************************************************/
     function previewPage(delta) {
       const newPage = AppState.ui.currentPreviewPage + delta;
@@ -2032,7 +2276,7 @@
     El.previewCanvas.addEventListener("click", openPreviewFullSize);
 
     /**********************************************************************
-     * 15) Page range hint
+     * 16) Page range hint
      **********************************************************************/
     function updatePageRangeHint() {
       const start = safeParseInt(El.tocStart.value) || 1;
@@ -2065,7 +2309,7 @@
     }
 
     /**********************************************************************
-     * 16) PDF generation
+     * 17) PDF generation
      **********************************************************************/
     async function processPdf() {
       if (!AppState.pdf.bytes) return alert("No PDF loaded");
@@ -2075,7 +2319,6 @@
         if (!confirm("Some chapters have invalid page tokens. Continue anyway?")) return;
       }
 
-      // Offer sort if unsorted
       const rows = Array.from(El.chapterList.querySelectorAll(".chapter-row"));
       let last = -Infinity;
       let unsorted = false;
@@ -2158,7 +2401,6 @@
           doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
         }
 
-        // Page labels
         if (!El.preserveLabels.checked) {
           const nums = [];
           nums.push(PDFNumber.of(0));
@@ -2210,7 +2452,7 @@
     }
 
     /**********************************************************************
-     * 17) Wire up UI events
+     * 18) Wire up UI events
      **********************************************************************/
     El.pdfFile.addEventListener("change", async (e) => {
       const file = e.target.files && e.target.files[0];
@@ -2279,7 +2521,6 @@
 
     El.processBtn.addEventListener("click", processPdf);
 
-    // Initial hint
     updatePageRangeHint();
     updateHistoryButtons();
   </script>
