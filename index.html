@@ -3,15 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF ToC Tool (Upgraded v2.1)</title>
-
-  <!-- Version pinning -->
-  <script>
-    // Keep these in sync with the script tags below.
-    window.__PDFJS_VERSION__ = "3.11.174";
-    window.__PDFLIB_VERSION__ = "1.17.1";
-    window.__TESSERACT_VERSION__ = "5";
-  </script>
+  <title>PDF ToC Tool</title>
 
   <!-- Libraries -->
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -89,12 +81,6 @@
       border-radius: 6px;
       margin-bottom: 10px;
       font-size: 14px;
-    }
-
-    textarea {
-      min-height: 160px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      white-space: pre;
     }
 
     button {
@@ -216,21 +202,6 @@
       margin-top: 10px;
     }
 
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: #eef2ff;
-      color: #3730a3;
-      font-size: 12px;
-      border: 1px solid #c7d2fe;
-      font-weight: 600;
-    }
-
-    details summary { user-select: none; }
-    
     /* Busy state for global UI */
     body.busy-cursor, body.busy-cursor button, body.busy-cursor input, body.busy-cursor select {
       cursor: wait !important;
@@ -243,7 +214,7 @@
 </head>
 
 <body>
-  <h1>📚 PDF ToC Tool (Upgraded v2.1)</h1>
+  <h1>📚 PDF ToC Tool</h1>
 
   <!-- Step 1: Upload -->
   <div class="card">
@@ -270,7 +241,6 @@
     <div id="file-info-container" class="hidden" style="margin-top: 15px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
       <div id="file-info" style="font-weight: 700;"></div>
       <div class="flex-row">
-        <span class="pill" id="pinned-pill">Pinned PDF.js worker</span>
         <button id="auto-detect-btn" class="secondary" style="padding: 6px 10px; font-size: 0.9em;">
           ✨ Re-run Auto-Detect
         </button>
@@ -287,14 +257,14 @@
   <div class="card hidden" id="step2">
     <h2><span class="step-number">2</span> Page Offset and Preview</h2>
     <p style="color: #666; font-size: 0.92em; margin-bottom: 15px;">
-      “Book Page 1” means the printed page number 1 in the body text, not the PDF page 1.
+      "Book Page 1" means the printed page number 1 in the body text, not the PDF page 1.
     </p>
 
     <div style="display: flex; gap: 18px; flex-wrap: wrap;">
       <div style="flex: 1; min-width: 260px;">
         <label>Book Page 1 is on PDF Page:</label>
         <input type="number" id="page-offset" value="1" min="1">
-        <div class="small-note">Everything before this becomes “Front Matter”.</div>
+        <div class="small-note">Everything before this becomes "Front Matter".</div>
 
         <div class="settings-box">
           <div style="font-weight: 700; margin-bottom: 8px;">Automation</div>
@@ -307,13 +277,6 @@
             If extraction is weak, automatically OCR the ToC pages
           </label>
         </div>
-
-        <details style="margin-top: 10px;">
-          <summary style="font-size: 0.85em; color: #666; cursor: pointer;">Show Scan Debug Info</summary>
-          <div id="scan-debug-info" style="font-size: 11px; color: #444; background: #eee; padding: 8px; border-radius: 4px; margin-top: 5px; max-height: 150px; overflow-y: auto;">
-            No scan data yet.
-          </div>
-        </details>
       </div>
 
       <div style="flex: 1.3; min-width: 320px;">
@@ -362,92 +325,27 @@
         <span id="page-range-hint" class="small-note"></span>
       </div>
 
+      <div class="flex-row" style="margin-bottom: 12px;">
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.95em;">
+          OCR Language:
+          <select id="ocr-lang" style="width: auto; margin: 0; padding: 6px 10px;">
+            <option value="eng" selected>English</option>
+            <option value="spa">Spanish</option>
+            <option value="fra">French</option>
+            <option value="deu">German</option>
+            <option value="kor">Korean</option>
+            <option value="chi_sim">Chinese</option>
+          </select>
+        </label>
+      </div>
+
       <div class="flex-row">
         <button id="set-toc-current-btn" class="secondary" style="padding: 8px 12px;">Set to current page</button>
         <button id="extract-text-btn" class="success" style="padding: 8px 16px;">Extract from embedded text (fast)</button>
         <button id="extract-ocr-btn" class="success" style="padding: 8px 16px;">OCR ToC pages from PDF (best for scans)</button>
       </div>
 
-      <div class="settings-box">
-        <div style="font-weight: 800; margin-bottom: 8px;">Parsing filters</div>
-        <label style="display:flex; align-items:center; gap:8px; font-size: 0.92em;">
-          <input type="checkbox" id="filter-subchapters" checked style="width:auto; margin:0;">
-          Skip subchapters (1.1, 2.3, etc.)
-        </label>
-      </div>
-
       <div id="extract-status" class="status-box hidden" style="margin-top: 12px;"></div>
-
-      <details style="margin-top: 12px;">
-        <summary style="cursor: pointer; font-weight: 700; color: #444; padding: 10px; background: #f5f5f5; border-radius: 8px;">
-          🔎 Show raw ToC text (debug)
-        </summary>
-        <div style="margin-top: 10px;">
-          <div class="small-note" style="margin-bottom: 6px;">
-            This is the raw text that was extracted or OCRed before parsing.
-          </div>
-          <textarea id="toc-raw-text" readonly placeholder="Raw extracted text will appear here..."></textarea>
-          <div class="button-row">
-            <button class="secondary" id="copy-raw-btn">Copy</button>
-            <button class="secondary" id="download-raw-btn">Download .txt</button>
-          </div>
-        </div>
-      </details>
-
-      <details style="margin-top: 12px;">
-        <summary style="cursor: pointer; font-weight: 700; color: #444; padding: 10px; background: #f5f5f5; border-radius: 8px;">
-          ⚙️ OCR quality settings
-        </summary>
-        <div class="settings-box">
-          <div class="flex-row">
-            <label style="display:flex; gap:8px; align-items:center;">
-              Languages:
-              <select id="ocr-lang" style="width:auto; margin:0;">
-                <option value="spa,eng" selected>Spanish + English</option>
-                <option value="spa">Spanish only</option>
-                <option value="eng">English only</option>
-                <option value="deu,eng">German + English</option>
-                <option value="fra,eng">French + English</option>
-                <option value="ita,eng">Italian + English</option>
-              </select>
-            </label>
-
-            <label style="display:flex; gap:8px; align-items:center;">
-              PSM:
-              <select id="ocr-psm" style="width:auto; margin:0;">
-                <option value="6" selected>6 Single block</option>
-                <option value="4">4 Single column</option>
-                <option value="3">3 Auto</option>
-                <option value="11">11 Sparse text</option>
-                <option value="1">1 Auto + OSD</option>
-              </select>
-            </label>
-
-            <label style="display:flex; gap:8px; align-items:center;">
-              DPI:
-              <select id="ocr-dpi" style="width:auto; margin:0;">
-                <option value="250">250</option>
-                <option value="300" selected>300</option>
-                <option value="400">400</option>
-              </select>
-            </label>
-
-            <label style="display:flex; gap:8px; align-items:center;">
-              Preprocess:
-              <select id="ocr-preprocess" style="width:auto; margin:0;">
-                <option value="adaptive" selected>Adaptive threshold (recommended)</option>
-                <option value="grayscale">Grayscale only</option>
-                <option value="none">None</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="small-note" style="margin-top: 8px;">
-            Tesseract recognizes better at higher resolution, and Tesseract.js exposes parameters like `tessedit_pageseg_mode`,
-            `preserve_interword_spaces`, and `user_defined_dpi`.
-          </div>
-        </div>
-      </details>
     </div>
 
     <div id="front-matter-row" class="hidden" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
@@ -495,11 +393,8 @@
      * 0) Version pinning for PDF.js worker
      **********************************************************************/
     (function initPdfJsWorkerPinning(){
-      const PDFJS_VERSION = window.__PDFJS_VERSION__ || "3.11.174";
       pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/" + PDFJS_VERSION + "/pdf.worker.min.js";
-      const pill = document.getElementById("pinned-pill");
-      if (pill) pill.textContent = "Pinned PDF.js worker " + PDFJS_VERSION;
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     })();
 
     /**********************************************************************
@@ -520,8 +415,7 @@
         pageOffset: 1,
         detectedMaxRoman: 0,
         mainContentStartPdfPage: null,
-        chapters: [],
-        scanScores: [] // Debug info
+        chapters: []
       },
       ui: {
         currentPreviewPage: 1,
@@ -559,7 +453,6 @@
       autoRunBtn: $("auto-run-btn"),
       resetChaptersBtn: $("reset-chapters-btn"),
       pageOffset: $("page-offset"),
-      scanDebugInfo: $("scan-debug-info"),
       previewCanvas: $("preview-canvas"),
       previewPageNum: $("preview-page-num"),
       previewScale: $("preview-scale"),
@@ -580,17 +473,8 @@
       extractOcrBtn: $("extract-ocr-btn"),
       extractStatus: $("extract-status"),
 
-      rawToc: $("toc-raw-text"),
-      copyRawBtn: $("copy-raw-btn"),
-      downloadRawBtn: $("download-raw-btn"),
-
-      filterSubchapters: $("filter-subchapters"),
-      autoOcrFallback: $("auto-ocr-fallback"),
-
       ocrLang: $("ocr-lang"),
-      ocrPsm: $("ocr-psm"),
-      ocrDpi: $("ocr-dpi"),
-      ocrPreprocess: $("ocr-preprocess"),
+      autoOcrFallback: $("auto-ocr-fallback"),
 
       frontMatterRow: $("front-matter-row"),
       frontMatterPages: $("front-matter-pages"),
@@ -903,8 +787,6 @@
               y = it.transform && it.transform[5] ? it.transform[5] : 0;
             }
 
-            // Fix: Scale width to match viewport coordinate space
-            // it.width is in PDF units. viewport.scale handles the conversion.
             const w = (typeof it.width === "number" ? it.width : 0) * (viewport.scale || 1);
             const h = (typeof it.height === "number" ? it.height : 0) * (viewport.scale || 1);
             
@@ -919,7 +801,6 @@
       }
 
       async function renderPageToCanvas(pageNum, dpi) {
-        // dpi is approximate: PDF points are 72 dpi.
         const page = await AppState.pdf.doc.getPage(pageNum);
         const scale = Math.max(1, (dpi || 300) / 72);
         const viewport = page.getViewport({ scale });
@@ -930,7 +811,6 @@
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
 
-        // Turn off interpolation for sharper text
         ctx.imageSmoothingEnabled = false;
 
         await page.render({ canvasContext: ctx, viewport }).promise;
@@ -971,7 +851,6 @@
       if (isRomanNumeralToken(t)) {
         const rv = romanToInt(t);
         const maxRoman = AppState.toc.detectedMaxRoman || 0;
-        // If we know maxRoman, we can anchor 'i' relative to the start of Arabic numbering
         if (Number.isFinite(rv) && rv > 0 && maxRoman > 0 && pageOffset > 1) {
              const pdfIndex = (pageOffset - 1) - (maxRoman - rv + 1);
              if (pdfIndex >= 0 && pdfIndex < (pageOffset - 1)) return pdfIndex;
@@ -982,7 +861,7 @@
     }
 
     /**********************************************************************
-     * 7) Text extraction and parsing (Updated v2.1)
+     * 7) Text extraction and parsing
      **********************************************************************/
     const TocService = (function(){
       function groupItemsIntoLines(items) {
@@ -1082,8 +961,6 @@
 
         if (items.length <= 1) return [{ items }];
 
-        // Big gap threshold: tuned for scale=1 viewport space
-        // 12% of page width usually separates columns; clamp so tiny pages do not break.
         const bigGap = Math.max(60, w * 0.12);
 
         const segments = [];
@@ -1118,7 +995,6 @@
             continue;
           }
 
-          // Prefer hasEOL when available, but still segment split for columns.
           const hasAnyEol = items.some(it => it.hasEOL);
           let baseLines = [];
 
@@ -1185,7 +1061,7 @@
     })();
 
     /**********************************************************************
-     * 8) OCR service (OCR the PDF pages directly)
+     * 8) OCR service
      **********************************************************************/
     const OcrService = (function(){
       async function ensureScheduler(langsArray, oem, statusCb) {
@@ -1206,7 +1082,6 @@
         const { createWorker, createScheduler } = Tesseract;
         const scheduler = createScheduler();
 
-        // Conservative worker count
         const workerCount = Math.min(2, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
 
         for (let i = 0; i < workerCount; i++) {
@@ -1361,13 +1236,13 @@
       }
 
       async function ocrPdfRange(startPage, endPage, options, statusCb) {
-        const langs = String(options.langs || "spa,eng")
+        const langs = String(options.langs || "eng")
           .split(",")
           .map(s => s.trim())
           .filter(Boolean);
 
-        const psm = safeParseInt(options.psm) || 6;
-        const dpi = safeParseInt(options.dpi) || 300;
+        const psm = 6;
+        const dpi = 300;
         const preprocess = options.preprocess || "adaptive";
 
         const scheduler = await ensureScheduler(langs, 1, statusCb);
@@ -1395,14 +1270,13 @@
       }
 
       async function sniffTocInScannedPdf(startPage, endPage) {
-        // Fast, low-DPI OCR just to find "Contents"
-        const scheduler = await ensureScheduler(["eng", "spa"], 1, null);
+        const scheduler = await ensureScheduler(["eng"], 1, null);
         for (const w of AppState.ocr.workers) {
-          await w.setParameters({ tessedit_pageseg_mode: 1 }); // Auto OSD
+          await w.setParameters({ tessedit_pageseg_mode: 1 });
         }
 
         for (let p = startPage; p <= endPage; p++) {
-          const canvas = await PdfService.renderPageToCanvas(p, 100); // Low DPI
+          const canvas = await PdfService.renderPageToCanvas(p, 100);
           const res = await scheduler.addJob("recognize", canvas);
           const txt = (res.data.text || "").toLowerCase();
           if (/(contents|índice|indice|inhalt|sommaire)/.test(txt)) {
@@ -1423,7 +1297,6 @@
       return { ocrPdfRange, sniffTocInScannedPdf, terminate };
     })();
 
-    // Use pagehide for more reliable cleanup than unload
     window.addEventListener("pagehide", () => {
       OcrService.terminate();
     });
@@ -1522,7 +1395,6 @@
       handle.addEventListener("dragstart", (e) => {
         row.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
-        // Required for Safari drag and drop
         e.dataTransfer.setData("text/plain", "");
       });
       handle.addEventListener("dragend", () => {
@@ -1596,7 +1468,6 @@
       rows.sort((a, b) => getPageFromRow(a) - getPageFromRow(b));
       El.chapterList.innerHTML = "";
       rows.forEach(r => El.chapterList.appendChild(r));
-      // sync + history
       const chapters = rows.map(r => ({
         title: r.querySelector(".chapter-title").value,
         page: r.querySelector(".chapter-page").value
@@ -1605,32 +1476,7 @@
     }
 
     /**********************************************************************
-     * 10) Raw ToC debug helpers
-     **********************************************************************/
-    function setRawToc(text) {
-      El.rawToc.value = normalizeNewlines(text || "");
-    }
-
-    function copyRawToc() {
-      const txt = El.rawToc.value || "";
-      navigator.clipboard.writeText(txt).catch(() => alert("Copy failed. Browser blocked clipboard access."));
-    }
-
-    function downloadRawToc() {
-      const txt = El.rawToc.value || "";
-      const blob = new Blob([txt], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "toc_raw.txt";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-
-    /**********************************************************************
-     * 11) Offset detection and ToC range detection (automation)
+     * 10) Offset detection and ToC range detection (automation)
      **********************************************************************/
     async function getHeaderFooterNumberCandidates(pageNum) {
       const page = await AppState.pdf.doc.getPage(pageNum);
@@ -1638,7 +1484,6 @@
       const viewport = page.getViewport({ scale: 1 });
       const h = viewport.height;
 
-      // In viewport (canvas like) coords: header is near top (small y), footer near bottom (large y)
       const isHeader = (y) => y < h * 0.15;
       const isFooter = (y) => y > h * 0.85;
 
@@ -1666,7 +1511,6 @@
     async function scoreTocPage(pageNum) {
       const { items, viewport } = await PdfService.getTextItemsWithViewport(pageNum, 1);
       
-      // If no items, it might be a scanned page. Return special signal.
       if (!items.length) return { pageNum, score: 0, entryish: 0, hasKeyword: false, isEmpty: true };
 
       const hasAnyEol = items.some(it => it.hasEOL);
@@ -1728,17 +1572,6 @@
       return { pageNum, score, entryish: totalEntryish, hasKeyword, isEmpty: false };
     }
 
-    function renderScanDebug(scores) {
-      if (!scores || !scores.length) {
-        El.scanDebugInfo.textContent = "No scan data.";
-        return;
-      }
-      const html = scores.map(s => 
-        `<div>Pg ${s.pageNum}: Score ${s.score.toFixed(1)} (Entries: ${s.entryish}, Key: ${s.hasKeyword ? 'Y' : 'N'}${s.isEmpty ? ', Empty' : ''})</div>`
-      ).join("");
-      El.scanDebugInfo.innerHTML = html;
-    }
-
     async function autoFindTocRange(scanStart, scanEnd) {
       const scores = [];
       let emptyCount = 0;
@@ -1748,9 +1581,6 @@
         scores.push(s);
         if (s.isEmpty) emptyCount++;
       }
-      
-      AppState.toc.scanScores = scores;
-      renderScanDebug(scores);
 
       // If mostly empty, try scanned PDF fallback
       if (emptyCount > (scanEnd - scanStart) * 0.8) {
@@ -1882,7 +1712,7 @@
     }
 
     /**********************************************************************
-     * 12) ToC extraction pipeline: Text extraction first, OCR fallback
+     * 11) ToC extraction pipeline
      **********************************************************************/
     function showExtractStatus(kind, msg) {
       El.extractStatus.classList.remove("hidden");
@@ -1901,11 +1731,11 @@
     }
 
     function parseEntriesToChapters(entries) {
-      const skipSubs = !!El.filterSubchapters.checked;
       const out = [];
       for (const e of (entries || [])) {
         if (!e || !e.title || !e.page) continue;
-        if (skipSubs && looksLikeSubchapter(e.title)) continue;
+        // Always skip subchapters
+        if (looksLikeSubchapter(e.title)) continue;
         out.push({ title: e.title, page: e.page });
       }
       return out;
@@ -1925,7 +1755,6 @@
       try {
         showExtractStatus("processing", "Extracting embedded text...");
         const rawText = await TocService.extractRawLinesFromPdfRange(startPage, endPage, (m) => showExtractStatus("processing", m));
-        setRawToc(rawText);
 
         const entries = parseTocTextFallback(rawText);
         updateDetectedMaxRoman(entries);
@@ -1973,9 +1802,7 @@
         
         const opts = overrideOptions || {
             langs: El.ocrLang.value,
-            psm: El.ocrPsm.value,
-            dpi: El.ocrDpi.value,
-            preprocess: El.ocrPreprocess.value
+            preprocess: "adaptive"
         };
 
         const text = await OcrService.ocrPdfRange(
@@ -1988,7 +1815,6 @@
         const raw = normalizeNewlines(text || "");
         const lines = raw.split("\n").map(l => repairTrailingPageNumber(stripNoise(l))).filter(Boolean);
         const cleaned = lines.join("\n");
-        setRawToc(cleaned);
 
         const entries = parseTocTextFallback(cleaned);
         updateDetectedMaxRoman(entries);
@@ -2015,7 +1841,7 @@
     }
 
     async function autoParseToc() {
-      // 1) Try text extraction (replaces geometry)
+      // 1) Try text extraction
       const okText = await extractUsingTextExtraction();
       if (okText) return true;
 
@@ -2028,22 +1854,16 @@
       if (okOcr) return true;
 
       // 4) If adaptive failed (0 entries), try Grayscale once automatically
-      if (El.ocrPreprocess.value === "adaptive") {
-          showExtractStatus("processing", "Adaptive OCR yielded no results. Retrying with Grayscale...");
-          const okGray = await extractUsingOcrFromPdf({
-              langs: El.ocrLang.value,
-              psm: El.ocrPsm.value,
-              dpi: El.ocrDpi.value,
-              preprocess: "grayscale"
-          });
-          return okGray;
-      }
-
-      return false;
+      showExtractStatus("processing", "Adaptive OCR yielded no results. Retrying with Grayscale...");
+      const okGray = await extractUsingOcrFromPdf({
+          langs: El.ocrLang.value,
+          preprocess: "grayscale"
+      });
+      return okGray;
     }
 
     /**********************************************************************
-     * 13) Text fallback parser (used for both Text Extraction and OCR)
+     * 12) Text fallback parser
      **********************************************************************/
     function parseTocTextFallback(rawText) {
       const lines = normalizeNewlines(rawText || "")
@@ -2127,7 +1947,7 @@
           continue;
         }
 
-        // inline: title ... page (allow optional trailing punctuation like . or ) or ])
+        // inline: title ... page
         const m = s.match(/^(.+?)\s+(\d+|[ivxlcdm]+)[.)\]]?$/i);
         if (m) {
           const t = cleanTitle(m[1]);
@@ -2150,7 +1970,7 @@
     }
 
     /**********************************************************************
-     * 14) Front matter display
+     * 13) Front matter display
      **********************************************************************/
     function updateFrontMatterDisplay() {
       const offset = safeParseInt(El.pageOffset.value) || 1;
@@ -2179,7 +1999,7 @@
     });
 
     /**********************************************************************
-     * 15) Preview helpers
+     * 14) Preview helpers
      **********************************************************************/
     function previewPage(delta) {
       const newPage = AppState.ui.currentPreviewPage + delta;
@@ -2212,7 +2032,7 @@
     El.previewCanvas.addEventListener("click", openPreviewFullSize);
 
     /**********************************************************************
-     * 16) Page range hint
+     * 15) Page range hint
      **********************************************************************/
     function updatePageRangeHint() {
       const start = safeParseInt(El.tocStart.value) || 1;
@@ -2245,7 +2065,7 @@
     }
 
     /**********************************************************************
-     * 17) PDF generation (bookmarks + page labels)
+     * 16) PDF generation
      **********************************************************************/
     async function processPdf() {
       if (!AppState.pdf.bytes) return alert("No PDF loaded");
@@ -2314,7 +2134,7 @@
               Title: PDFString.of(item.title),
               Dest: context.obj([pageRef, PDFName.of("XYZ"), null, null, null]),
               Parent: null,
-              Count: PDFNumber.of(0) // Explicitly set count to 0 for leaf nodes for compatibility
+              Count: PDFNumber.of(0)
             });
             refs.push(context.register(dict));
           }
@@ -2338,7 +2158,7 @@
           doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
         }
 
-        // Page labels: Only overwrite if user didn't check "Preserve"
+        // Page labels
         if (!El.preserveLabels.checked) {
           const nums = [];
           nums.push(PDFNumber.of(0));
@@ -2390,7 +2210,7 @@
     }
 
     /**********************************************************************
-     * 18) Wire up UI events
+     * 17) Wire up UI events
      **********************************************************************/
     El.pdfFile.addEventListener("change", async (e) => {
       const file = e.target.files && e.target.files[0];
@@ -2450,9 +2270,6 @@
 
     El.extractTextBtn.addEventListener("click", extractUsingTextExtraction);
     El.extractOcrBtn.addEventListener("click", () => extractUsingOcrFromPdf());
-
-    El.copyRawBtn.addEventListener("click", copyRawToc);
-    El.downloadRawBtn.addEventListener("click", downloadRawToc);
 
     El.undoBtn.addEventListener("click", undo);
     El.redoBtn.addEventListener("click", redo);
