@@ -3,9 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Smart PDF ToC Tool</title>
+  <title>PDF ToC Tool (Upgraded)</title>
 
-  <!-- Libraries (Version Pinned) -->
+  <!-- Version pinning -->
+  <script>
+    // Keep these in sync with the script tags below.
+    window.__PDFJS_VERSION__ = "3.11.174";
+    window.__PDFLIB_VERSION__ = "1.17.1";
+    window.__TESSERACT_VERSION__ = "5";
+  </script>
+
+  <!-- Libraries -->
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -19,14 +27,17 @@
       --text: #1f2937;
       --border: #e5e7eb;
       --danger: #dc2626;
-      --success: #059669;
+      --danger-light: #fef2f2;
+      --ok: #059669;
+      --ok-hover: #047857;
+      --muted: #6b7280;
     }
 
     * { box-sizing: border-box; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 900px;
+      max-width: 980px;
       margin: 0 auto;
       padding: 20px;
       background: var(--bg);
@@ -34,7 +45,12 @@
       line-height: 1.5;
     }
 
-    h1 { border-bottom: 3px solid var(--primary); padding-bottom: 15px; margin-bottom: 30px; }
+    h1 {
+      color: #111827;
+      border-bottom: 3px solid var(--primary);
+      padding-bottom: 15px;
+      margin-bottom: 30px;
+    }
 
     .card {
       background: var(--card-bg);
@@ -45,691 +61,2171 @@
       border: 1px solid var(--border);
     }
 
-    .card h2 { margin-top: 0; display: flex; align-items: center; gap: 10px; font-size: 1.25rem; }
-    
-    .step-number {
-      background: var(--primary); color: white; width: 28px; height: 28px;
-      border-radius: 50%; display: flex; align-items: center; justify-content: center;
-      font-size: 0.9rem; font-weight: bold;
+    .card h2 {
+      margin-top: 0;
+      font-size: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
-    /* Inputs & Buttons */
-    input, select, textarea {
-      width: 100%; padding: 10px; border: 1px solid var(--border);
-      border-radius: 6px; margin-bottom: 10px; font-size: 14px;
+    .step-number {
+      background: var(--primary);
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      font-weight: bold;
     }
-    
+
+    input[type="text"], input[type="number"], select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    textarea {
+      min-height: 160px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space: pre;
+    }
+
     button {
-      background: var(--primary); color: white; border: none; padding: 10px 20px;
-      border-radius: 6px; cursor: pointer; font-weight: 500; transition: background 0.2s;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
     }
+
     button:hover { background: var(--primary-hover); }
     button:disabled { background: #9ca3af; cursor: not-allowed; }
-    button.secondary { background: #6b7280; }
+
+    button.secondary { background: var(--muted); }
     button.secondary:hover { background: #4b5563; }
-    button.success { background: var(--success); }
-    button.danger { background: var(--danger); }
-    button.sm { padding: 5px 10px; font-size: 0.85rem; }
 
-    /* Preview Area & Crop Tool */
-    .preview-container {
-      position: relative;
-      display: inline-block;
-      border: 1px solid var(--border);
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-      margin-top: 10px;
-      user-select: none;
-    }
+    button.success { background: var(--ok); }
+    button.success:hover { background: var(--ok-hover); }
 
-    #preview-canvas { display: block; max-width: 100%; }
+    button.danger { background: #dc2626; }
+    button.danger:hover { background: #b91c1c; }
 
-    /* The Crop Overlay */
-    #crop-overlay {
-      position: absolute;
-      top: 0; left: 0; width: 100%; height: 100%;
-      cursor: crosshair;
-      pointer-events: auto;
-    }
-
-    .crop-box {
-      position: absolute;
-      border: 2px solid rgba(220, 38, 38, 0.8);
-      background: rgba(220, 38, 38, 0.1);
-      pointer-events: none;
-    }
-
-    .crop-instructions {
-      background: #fff7ed; border: 1px solid #ffedd5; color: #9a3412;
-      padding: 10px; border-radius: 6px; font-size: 0.9em; margin-bottom: 10px;
-      display: flex; align-items: center; gap: 10px;
-    }
-
-    /* Chapter List */
-    .chapter-row {
-      display: flex; gap: 10px; align-items: center; padding: 8px;
-      background: #f9fafb; border: 1px solid var(--border);
-      border-radius: 6px; margin-bottom: 8px;
-    }
-    .chapter-row.dragging { opacity: 0.5; background: #eff6ff; }
-    .drag-handle { cursor: grab; color: #9ca3af; padding: 0 5px; font-size: 18px; }
-    .chapter-row input { margin-bottom: 0; }
-    .chapter-title { flex: 1; }
-    .chapter-page { width: 80px; text-align: center; }
-
-    /* Utilities */
     .hidden { display: none !important; }
     .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .status-box { padding: 15px; border-radius: 6px; margin-top: 15px; }
-    .status-box.success { background: #d1fae5; color: #065f46; }
-    .status-box.error { background: #fee2e2; color: #991b1b; }
-    .status-box.processing { background: #fef3c7; color: #92400e; }
+    .button-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+    .toolbar {
+      background: #e5e7eb;
+      padding: 8px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .toolbar .separator {
+      width: 1px;
+      height: 20px;
+      background: #ccc;
+      margin: 0 5px;
+    }
+
+    #preview-canvas {
+      border: 1px solid var(--border);
+      max-width: 100%;
+      max-height: 520px;
+      margin-top: 10px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      object-fit: contain;
+      cursor: pointer;
+    }
+
+    .status-box {
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    .status-box.success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .status-box.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .status-box.processing { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .status-box.warning { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+
+    .chapter-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px;
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chapter-row.dragging { opacity: 0.5; }
+    .chapter-row.invalid { background: var(--danger-light); border-color: var(--danger); }
+
+    .chapter-row .validation-msg {
+      font-size: 11px;
+      color: var(--danger);
+      display: none;
+      width: 100%;
+      margin-top: 4px;
+      padding-left: 30px;
+    }
+    .chapter-row.invalid .validation-msg { display: block; }
+
+    .chapter-row input { margin-bottom: 0; }
+    .chapter-row .chapter-title { flex: 1; min-width: 280px; }
+    .chapter-row .chapter-page { width: 100px; text-align: center; }
+
+    .chapter-row.invalid .chapter-page {
+      border-color: var(--danger);
+      background: var(--danger-light);
+    }
+
+    .drag-handle {
+      cursor: grab;
+      color: #9ca3af;
+      padding: 0 5px;
+      font-size: 18px;
+      user-select: none;
+    }
+    .drag-handle:active { cursor: grabbing; }
+
+    .small-note { font-size: 11px; color: #666; }
+
+    .settings-box {
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 12px;
+      border: 1px solid #c7d2fe;
+      font-weight: 600;
+    }
+
+    details summary { user-select: none; }
   </style>
 </head>
 
 <body>
-  <h1>📚 Smart PDF ToC Tool</h1>
+  <h1>📚 PDF ToC Tool (Upgraded)</h1>
 
   <!-- Step 1: Upload -->
   <div class="card">
-    <h2><span class="step-number">1</span> Load PDF</h2>
-    <div class="flex-row">
-      <div style="flex: 1;">
+    <h2><span class="step-number">1</span> Select PDF</h2>
+
+    <div class="flex-row" style="align-items:flex-start;">
+      <div style="flex: 1; min-width: 220px;">
+        <label style="font-size: 0.9em;">From your computer:</label>
         <input type="file" id="pdf-file" accept=".pdf">
       </div>
-      <div style="flex: 1;">
-        <div class="flex-row" style="gap: 5px;">
-          <input type="text" id="pdf-url" placeholder="https://example.com/doc.pdf" style="margin-bottom: 0;">
-          <button id="load-url-btn" class="secondary">Load URL</button>
+
+      <div style="display: flex; align-items: center; color: #999; font-weight: 700; padding-top: 24px;">OR</div>
+
+      <div style="flex: 2; min-width: 320px;">
+        <label style="font-size: 0.9em;">From Dropbox URL:</label>
+        <div class="flex-row" style="flex-wrap: nowrap;">
+          <input type="text" id="pdf-url" placeholder="https://www.dropbox.com/s/..." style="flex: 1; margin-bottom: 0;">
+          <button id="load-url-btn" class="secondary">Load</button>
+        </div>
+        <div class="small-note" style="margin-top: 6px;">Paste a Dropbox share link</div>
+      </div>
+    </div>
+
+    <div id="file-info-container" class="hidden" style="margin-top: 15px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+      <div id="file-info" style="font-weight: 700;"></div>
+      <div class="flex-row">
+        <span class="pill" id="pinned-pill">Pinned PDF.js worker</span>
+        <button id="auto-detect-btn" class="secondary" style="padding: 6px 10px; font-size: 0.9em;">
+          ✨ Re-run Auto-Detect
+        </button>
+        <button id="auto-parse-btn" class="success" style="padding: 6px 10px; font-size: 0.9em;">
+          ⚡ Auto-Parse ToC
+        </button>
+      </div>
+    </div>
+
+    <div id="url-error" class="hidden" style="margin-top: 10px; padding: 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 13px;"></div>
+  </div>
+
+  <!-- Step 2: Offset + Preview -->
+  <div class="card hidden" id="step2">
+    <h2><span class="step-number">2</span> Page Offset and Preview</h2>
+    <p style="color: #666; font-size: 0.92em; margin-bottom: 15px;">
+      “Book Page 1” means the printed page number 1 in the body text, not the PDF page 1.
+    </p>
+
+    <div style="display: flex; gap: 18px; flex-wrap: wrap;">
+      <div style="flex: 1; min-width: 260px;">
+        <label>Book Page 1 is on PDF Page:</label>
+        <input type="number" id="page-offset" value="1" min="1">
+        <div class="small-note">Everything before this becomes “Front Matter”.</div>
+
+        <div class="settings-box">
+          <div style="font-weight: 700; margin-bottom: 8px;">Automation</div>
+          <div class="flex-row">
+            <button id="auto-run-btn" class="success" style="flex: 1;">🚀 Auto-run (detect + parse)</button>
+            <button id="reset-chapters-btn" class="secondary" style="flex: 1;">Reset chapters</button>
+          </div>
+          <label class="small-note" style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+            <input type="checkbox" id="auto-ocr-fallback" checked style="width:auto; margin:0;">
+            If extraction is weak, automatically OCR the ToC pages
+          </label>
         </div>
       </div>
-    </div>
-    <div id="file-info" class="status-box hidden" style="background: #f8fafc; border: 1px solid #e2e8f0;"></div>
-  </div>
 
-  <!-- Step 2: Preview & Crop -->
-  <div class="card hidden" id="step-preview">
-    <h2><span class="step-number">2</span> Define ToC Area</h2>
-    
-    <div class="flex-row" style="justify-content: space-between; margin-bottom: 15px;">
-      <div class="flex-row">
-        <button onclick="UI.changePage(-1)" class="secondary sm">◀ Prev</button>
-        <span id="preview-page-label" style="font-weight: bold; min-width: 80px; text-align: center;">Page 1</span>
-        <button onclick="UI.changePage(1)" class="secondary sm">Next ▶</button>
-      </div>
-      <div class="flex-row">
-        <label style="font-size: 0.9em;">Offset: <input type="number" id="page-offset" value="1" min="1" style="width: 60px; display:inline; margin:0;"></label>
-        <button onclick="UI.resetCrop()" class="secondary sm">Reset Crop</button>
-      </div>
-    </div>
+      <div style="flex: 1.3; min-width: 320px;">
+        <div class="flex-row" style="justify-content: space-between; margin-bottom: 6px;">
+          <div class="flex-row" style="flex-wrap: nowrap;">
+            <button id="prev-page-btn" class="secondary" style="padding: 6px 10px;">◀</button>
+            <span id="preview-page-num" style="font-weight: 800; min-width: 90px; text-align: center;">Page 1</span>
+            <button id="next-page-btn" class="secondary" style="padding: 6px 10px;">▶</button>
+          </div>
 
-    <div class="crop-instructions">
-      <span>✂️</span>
-      <div>
-        <strong>Draw a box</strong> around the ToC text below. This tells the extractor to ignore headers, footers, and sidebar noise.
-      </div>
-    </div>
-
-    <div style="text-align: center; background: #333; padding: 10px; border-radius: 4px;">
-      <div class="preview-container">
-        <canvas id="preview-canvas"></canvas>
-        <div id="crop-overlay"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Step 3: Extract -->
-  <div class="card hidden" id="step-extract">
-    <h2><span class="step-number">3</span> Extract Chapters</h2>
-    
-    <div class="flex-row" style="margin-bottom: 15px;">
-      <label style="width: auto;">Start Pg: <input type="number" id="toc-start" value="1" style="width: 70px; display:inline;"></label>
-      <label style="width: auto;">End Pg: <input type="number" id="toc-end" value="1" style="width: 70px; display:inline;"></label>
-      <button onclick="Actions.setRangeToCurrent()" class="secondary sm">Use Current Page</button>
-    </div>
-
-    <div class="flex-row">
-      <button onclick="Actions.extractToc()" class="success">✨ Smart Extract</button>
-      <button onclick="Actions.runOcr()" class="secondary">📷 Run OCR (Scanned)</button>
-    </div>
-
-    <div id="extract-status" class="status-box hidden"></div>
-
-    <div style="margin-top: 20px;">
-      <div class="flex-row" style="justify-content: space-between; margin-bottom: 10px;">
-        <strong>Chapters</strong>
-        <div class="flex-row">
-          <button onclick="Actions.addChapter()" class="secondary sm">+ Add</button>
-          <button onclick="Actions.sortChapters()" class="secondary sm">Sort</button>
-          <button onclick="Actions.clearChapters()" class="danger sm">Clear</button>
+          <div class="flex-row">
+            <select id="preview-scale" style="width: auto; margin: 0; padding: 6px 10px;" title="Preview resolution">
+              <option value="1">1x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2" selected>2x</option>
+              <option value="3">3x</option>
+              <option value="4">4x</option>
+            </select>
+            <button id="save-preview-btn" class="secondary" style="padding: 6px 10px;" title="Save current page as PNG">📷 Save</button>
+          </div>
         </div>
+
+        <canvas id="preview-canvas" title="Click to open full size in a new tab"></canvas>
+        <div class="small-note" style="text-align:center; margin-top: 6px;">Click image to open full size</div>
       </div>
-      <div id="chapter-list"></div>
     </div>
   </div>
 
-  <!-- Step 4: Download -->
-  <div class="card hidden" id="step-download">
-    <h2><span class="step-number">4</span> Download</h2>
-    <input type="text" id="output-filename" placeholder="bookmarked.pdf">
-    <button onclick="Actions.generatePdf()" class="success" style="width: 100%; font-size: 1.1em;">Download PDF</button>
-    <div id="gen-status" class="status-box hidden"></div>
+  <!-- Step 3: ToC -->
+  <div class="card hidden" id="step3">
+    <h2><span class="step-number">3</span> Table of Contents</h2>
+
+    <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; padding: 18px; margin-bottom: 18px;">
+      <div style="font-weight: 800; margin-bottom: 8px; color: #0369a1;">📄 ToC page range</div>
+      <div class="small-note" style="margin-bottom: 10px;">Set the PDF page range that contains the table of contents.</div>
+
+      <div class="flex-row" style="margin-bottom: 8px;">
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.95em;">
+          ToC starts:
+          <input type="number" id="toc-start-page" value="1" min="1" style="width: 90px; margin: 0; padding: 6px 10px;">
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.95em;">
+          ToC ends:
+          <input type="number" id="toc-end-page" value="1" min="1" style="width: 90px; margin: 0; padding: 6px 10px;">
+        </label>
+        <span id="page-range-hint" class="small-note"></span>
+      </div>
+
+      <div class="flex-row">
+        <button id="set-toc-current-btn" class="secondary" style="padding: 8px 12px;">Set to current page</button>
+        <button id="extract-geo-btn" class="success" style="padding: 8px 16px;">Extract using geometry (fast)</button>
+        <button id="extract-ocr-btn" class="success" style="padding: 8px 16px;">OCR ToC pages from PDF (best for scans)</button>
+      </div>
+
+      <div class="settings-box">
+        <div style="font-weight: 800; margin-bottom: 8px;">Parsing filters</div>
+        <label style="display:flex; align-items:center; gap:8px; font-size: 0.92em;">
+          <input type="checkbox" id="filter-subchapters" checked style="width:auto; margin:0;">
+          Skip subchapters (1.1, 2.3, etc.)
+        </label>
+      </div>
+
+      <div id="extract-status" class="status-box hidden" style="margin-top: 12px;"></div>
+
+      <details style="margin-top: 12px;">
+        <summary style="cursor: pointer; font-weight: 700; color: #444; padding: 10px; background: #f5f5f5; border-radius: 8px;">
+          🔎 Show raw ToC text (debug)
+        </summary>
+        <div style="margin-top: 10px;">
+          <div class="small-note" style="margin-bottom: 6px;">
+            This is the raw text that was extracted or OCRed before parsing.
+          </div>
+          <textarea id="toc-raw-text" readonly placeholder="Raw extracted text will appear here..."></textarea>
+          <div class="button-row">
+            <button class="secondary" id="copy-raw-btn">Copy</button>
+            <button class="secondary" id="download-raw-btn">Download .txt</button>
+          </div>
+        </div>
+      </details>
+
+      <details style="margin-top: 12px;">
+        <summary style="cursor: pointer; font-weight: 700; color: #444; padding: 10px; background: #f5f5f5; border-radius: 8px;">
+          ⚙️ OCR quality settings
+        </summary>
+        <div class="settings-box">
+          <div class="flex-row">
+            <label style="display:flex; gap:8px; align-items:center;">
+              Languages:
+              <select id="ocr-lang" style="width:auto; margin:0;">
+                <option value="spa,eng" selected>Spanish + English</option>
+                <option value="spa">Spanish only</option>
+                <option value="eng">English only</option>
+                <option value="deu,eng">German + English</option>
+                <option value="fra,eng">French + English</option>
+                <option value="ita,eng">Italian + English</option>
+              </select>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              PSM:
+              <select id="ocr-psm" style="width:auto; margin:0;">
+                <option value="6" selected>6 Single block</option>
+                <option value="4">4 Single column</option>
+                <option value="3">3 Auto</option>
+                <option value="11">11 Sparse text</option>
+                <option value="1">1 Auto + OSD</option>
+              </select>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              DPI:
+              <select id="ocr-dpi" style="width:auto; margin:0;">
+                <option value="250">250</option>
+                <option value="300" selected>300</option>
+                <option value="400">400</option>
+              </select>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              Preprocess:
+              <select id="ocr-preprocess" style="width:auto; margin:0;">
+                <option value="adaptive" selected>Adaptive threshold (recommended)</option>
+                <option value="grayscale">Grayscale only</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="small-note" style="margin-top: 8px;">
+            Tesseract recognizes better at higher resolution, and Tesseract.js exposes parameters like `tessedit_pageseg_mode`,
+            `preserve_interword_spaces`, and `user_defined_dpi`. :contentReference[oaicite:2]{index=2}
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div id="front-matter-row" class="hidden" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+      <span style="color: #166534; font-size: 1.1em;">📑</span>
+      <span id="front-matter-text" style="flex: 1; font-weight: 800; color: #166534;">Front Matter</span>
+      <span id="front-matter-pages" style="color: #666; font-size: 0.9em;"></span>
+    </div>
+
+    <div class="toolbar">
+      <button id="undo-btn" disabled class="secondary" style="padding: 6px 10px;">↶ Undo</button>
+      <button id="redo-btn" disabled class="secondary" style="padding: 6px 10px;">↷ Redo</button>
+      <div class="separator"></div>
+      <button id="sort-btn" class="secondary" style="padding: 6px 10px;">Sort by Page</button>
+      <button id="validate-btn" class="secondary" style="padding: 6px 10px;">Validate</button>
+      <span style="margin-left: auto; font-size: 0.85em; color: #666;">Drag to reorder</span>
+    </div>
+
+    <div id="chapter-list"></div>
+    <button id="add-chapter-btn" style="margin-top: 10px; width: 100%; background: #e5e7eb; color: #111827;">+ Add Chapter Manually</button>
+  </div>
+
+  <!-- Step 4: Generate -->
+  <div class="card hidden" id="step4">
+    <h2><span class="step-number">4</span> Generate PDF</h2>
+
+    <div style="margin-bottom: 10px;">
+      <label style="font-size: 0.9em;">Output filename:</label>
+      <input type="text" id="output-filename" placeholder="processed_document.pdf" style="margin-bottom: 0;">
+    </div>
+
+    <button id="process-btn" class="success" style="width: 100%; font-size: 1.1em; padding: 15px;">Download PDF with Bookmarks</button>
+    <div id="status" class="status-box hidden"></div>
   </div>
 
   <script>
-    /**
-     * CONFIGURATION & CONSTANTS
-     */
-    const PDFJS_VERSION = '3.11.174';
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
+    /**********************************************************************
+     * 0) Version pinning for PDF.js worker
+     **********************************************************************/
+    (function initPdfJsWorkerPinning(){
+      const PDFJS_VERSION = window.__PDFJS_VERSION__ || "3.11.174";
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/" + PDFJS_VERSION + "/pdf.worker.min.js";
+      const pill = document.getElementById("pinned-pill");
+      if (pill) pill.textContent = "Pinned PDF.js worker " + PDFJS_VERSION;
+    })();
 
-    /**
-     * APP STATE STORE
-     */
+    /**********************************************************************
+     * 1) App state store
+     **********************************************************************/
     const AppState = {
       pdf: {
         doc: null,
         bytes: null,
-        filename: 'document.pdf',
-        totalPages: 0,
-        pageOffset: 1
-      },
-      ui: {
-        currentPage: 1,
-        scale: 1.5,
-        crop: null, // { x, y, w, h } in normalized 0-1 coords
-        isDragging: false,
-        dragStart: { x: 0, y: 0 }
+        filename: "",
+        pageCount: 0,
+        pageLabels: null,
+        pageLabelIndexByLabel: null
       },
       toc: {
-        chapters: [], // { title, page }
         startPage: 1,
-        endPage: 1
+        endPage: 1,
+        pageOffset: 1,
+        detectedMaxRoman: 0,
+        mainContentStartPdfPage: null,
+        chapters: []
+      },
+      ui: {
+        currentPreviewPage: 1,
+        busy: false
+      },
+      history: {
+        stack: [],
+        index: -1,
+        isUndoRedo: false,
+        isBulkEdit: false
+      },
+      ocr: {
+        scheduler: null,
+        workers: [],
+        lastLangsKey: "",
+        lastOem: 1
       }
     };
 
-    /**
-     * MODULE: PDF SERVICE
-     * Handles loading and raw data access
-     */
-    const PdfService = {
-      async loadFromBytes(bytes, filename) {
+    /**********************************************************************
+     * 2) DOM helpers
+     **********************************************************************/
+    function $(id) { return document.getElementById(id); }
+
+    const El = {
+      chapterList: $("chapter-list"),
+      pdfFile: $("pdf-file"),
+      pdfUrl: $("pdf-url"),
+      loadUrlBtn: $("load-url-btn"),
+      urlError: $("url-error"),
+      fileInfoContainer: $("file-info-container"),
+      fileInfo: $("file-info"),
+      autoDetectBtn: $("auto-detect-btn"),
+      autoParseBtn: $("auto-parse-btn"),
+      autoRunBtn: $("auto-run-btn"),
+      resetChaptersBtn: $("reset-chapters-btn"),
+      pageOffset: $("page-offset"),
+      previewCanvas: $("preview-canvas"),
+      previewPageNum: $("preview-page-num"),
+      previewScale: $("preview-scale"),
+      prevPageBtn: $("prev-page-btn"),
+      nextPageBtn: $("next-page-btn"),
+      savePreviewBtn: $("save-preview-btn"),
+
+      step2: $("step2"),
+      step3: $("step3"),
+      step4: $("step4"),
+
+      tocStart: $("toc-start-page"),
+      tocEnd: $("toc-end-page"),
+      setTocCurrentBtn: $("set-toc-current-btn"),
+      pageRangeHint: $("page-range-hint"),
+
+      extractGeoBtn: $("extract-geo-btn"),
+      extractOcrBtn: $("extract-ocr-btn"),
+      extractStatus: $("extract-status"),
+
+      rawToc: $("toc-raw-text"),
+      copyRawBtn: $("copy-raw-btn"),
+      downloadRawBtn: $("download-raw-btn"),
+
+      filterSubchapters: $("filter-subchapters"),
+      autoOcrFallback: $("auto-ocr-fallback"),
+
+      ocrLang: $("ocr-lang"),
+      ocrPsm: $("ocr-psm"),
+      ocrDpi: $("ocr-dpi"),
+      ocrPreprocess: $("ocr-preprocess"),
+
+      frontMatterRow: $("front-matter-row"),
+      frontMatterPages: $("front-matter-pages"),
+
+      undoBtn: $("undo-btn"),
+      redoBtn: $("redo-btn"),
+      sortBtn: $("sort-btn"),
+      validateBtn: $("validate-btn"),
+      addChapterBtn: $("add-chapter-btn"),
+
+      outputFilename: $("output-filename"),
+      processBtn: $("process-btn"),
+      status: $("status")
+    };
+
+    /**********************************************************************
+     * 3) Utilities
+     **********************************************************************/
+    function normalizeNewlines(s) {
+      return (s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    }
+
+    function safeParseInt(x) {
+      const n = parseInt(String(x).trim(), 10);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
+    function normalizePageToken(token) {
+      let t = (token || "").trim();
+      t = t.replace(/[.)\]]+$/g, "");
+      t = t.replace(/^[[(]+/g, "");
+      return t.trim();
+    }
+
+    function isRomanNumeralToken(token) {
+      return /^[ivxlcdm]+$/i.test(token || "");
+    }
+
+    function romanToInt(roman) {
+      const s = String(roman || "").toLowerCase();
+      if (!/^[ivxlcdm]+$/.test(s)) return NaN;
+      const map = { i:1, v:5, x:10, l:50, c:100, d:500, m:1000 };
+      let total = 0;
+      let prev = 0;
+      for (let i = s.length - 1; i >= 0; i--) {
+        const val = map[s[i]] || 0;
+        if (val < prev) total -= val;
+        else { total += val; prev = val; }
+      }
+      return total > 0 ? total : NaN;
+    }
+
+    function foldText(s) {
+      // Safari safe diacritic fold
+      const nfd = (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      return nfd
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    const MAIN_CONTENT_HEADINGS = new Set([
+      "introduction", "foreword", "preface", "prologue",
+      "introduccion", "prologo", "prefacio",
+      "avant propos", "preface", "prologue",
+      "einleitung", "vorwort", "prolog",
+      "introduzione", "prefazione", "prologo",
+      "introducao", "prefacio", "prologo"
+    ]);
+
+    function looksLikeSubchapter(title) {
+      if (/^\s*\d+\.\d+(?:\.\d+)*\s+/.test(title || "")) return true;
+      if (/^\s*[A-Z]\.\d+(?:\.\d+)*\s+/i.test(title || "")) return true;
+      return false;
+    }
+
+    function repairTrailingPageNumber(line) {
+      // Fix OCR split digits only at the very end: "Title 1 0" -> "Title 10"
+      const tokens = (line || "").trim().split(/\s+/).filter(Boolean);
+      if (tokens.length < 3) return (line || "").trim();
+      let i = tokens.length - 1;
+
+      const take = [];
+      while (i >= 0 && /^\d$/.test(tokens[i]) && take.length < 4) {
+        take.push(tokens[i]);
+        i--;
+      }
+      if (take.length >= 2) {
+        // Do not swallow a chapter number if the token before the digit group is also a single digit.
+        if (i >= 0 && /^\d$/.test(tokens[i])) return (line || "").trim();
+        const joined = take.reverse().join("");
+        const rebuilt = tokens.slice(0, i + 1).concat([joined]).join(" ");
+        return rebuilt.trim();
+      }
+      return (line || "").trim();
+    }
+
+    /**********************************************************************
+     * 4) History system (undo / redo)
+     **********************************************************************/
+    function updateHistoryButtons() {
+      El.undoBtn.disabled = AppState.history.index <= 0;
+      El.redoBtn.disabled = AppState.history.index >= AppState.history.stack.length - 1;
+    }
+
+    function saveStateToHistory() {
+      if (AppState.history.isUndoRedo || AppState.history.isBulkEdit) return;
+      const snapshot = JSON.stringify(AppState.toc.chapters || []);
+      if (AppState.history.index < AppState.history.stack.length - 1) {
+        AppState.history.stack = AppState.history.stack.slice(0, AppState.history.index + 1);
+      }
+      AppState.history.stack.push(snapshot);
+      if (AppState.history.stack.length > 60) AppState.history.stack.shift();
+      else AppState.history.index++;
+      updateHistoryButtons();
+    }
+
+    function restoreStateFromHistory(snapshot) {
+      AppState.history.isUndoRedo = true;
+      const chapters = JSON.parse(snapshot || "[]");
+      setChapters(chapters, { saveHistory: false });
+      AppState.history.isUndoRedo = false;
+      validateAllChapters();
+    }
+
+    function undo() {
+      if (AppState.history.index > 0) {
+        AppState.history.index--;
+        restoreStateFromHistory(AppState.history.stack[AppState.history.index]);
+        updateHistoryButtons();
+      }
+    }
+
+    function redo() {
+      if (AppState.history.index < AppState.history.stack.length - 1) {
+        AppState.history.index++;
+        restoreStateFromHistory(AppState.history.stack[AppState.history.index]);
+        updateHistoryButtons();
+      }
+    }
+
+    document.addEventListener("keydown", (e) => {
+      const z = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z";
+      const y = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y";
+      if (z && !e.shiftKey) { e.preventDefault(); undo(); }
+      if (y || (z && e.shiftKey)) { e.preventDefault(); redo(); }
+    });
+
+    /**********************************************************************
+     * 5) PDF service
+     **********************************************************************/
+    const PdfService = (function(){
+      const CORS_PROXY = "https://toc-pdf-proxy.ccrawford.workers.dev";
+      let urlFetchController = null;
+
+      async function loadFromBytes(bytes, filename) {
+        AppState.pdf.bytes = bytes;
+        AppState.pdf.filename = filename || "document.pdf";
+        AppState.pdf.doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+        AppState.pdf.pageCount = AppState.pdf.doc.numPages;
+
+        // Page labels (optional)
+        AppState.pdf.pageLabels = null;
+        AppState.pdf.pageLabelIndexByLabel = null;
         try {
-          AppState.pdf.bytes = bytes;
-          AppState.pdf.filename = filename;
-          AppState.pdf.doc = await pdfjsLib.getDocument({ data: bytes }).promise;
-          AppState.pdf.totalPages = AppState.pdf.doc.numPages;
-          
-          // Reset State
-          AppState.ui.currentPage = 1;
-          AppState.ui.crop = null;
-          AppState.toc.chapters = [];
-          AppState.toc.startPage = 1;
-          AppState.toc.endPage = Math.min(3, AppState.pdf.totalPages);
+          const labels = await AppState.pdf.doc.getPageLabels();
+          if (Array.isArray(labels) && labels.length) {
+            AppState.pdf.pageLabels = labels;
+            const m = new Map();
+            for (let i = 0; i < labels.length; i++) {
+              const lbl = normalizePageToken(labels[i]).toLowerCase();
+              if (lbl && !m.has(lbl)) m.set(lbl, i);
+            }
+            AppState.pdf.pageLabelIndexByLabel = m;
+          }
+        } catch (e) {}
 
-          UI.init();
-        } catch (e) {
-          alert("Failed to load PDF: " + e.message);
+        // UI defaults
+        El.fileInfo.textContent = AppState.pdf.filename + " (" + AppState.pdf.pageCount + " pages)";
+        El.fileInfoContainer.classList.remove("hidden");
+        El.urlError.classList.add("hidden");
+        El.pageOffset.max = AppState.pdf.pageCount;
+
+        const baseName = AppState.pdf.filename.replace(/\.pdf$/i, "");
+        El.outputFilename.value = baseName + "_bookmarked.pdf";
+
+        El.tocStart.max = AppState.pdf.pageCount;
+        El.tocEnd.max = AppState.pdf.pageCount;
+        El.tocStart.value = 1;
+        El.tocEnd.value = Math.min(3, AppState.pdf.pageCount);
+
+        ["step2", "step3", "step4"].forEach(id => $(id).classList.remove("hidden"));
+
+        AppState.ui.currentPreviewPage = 1;
+        await renderPreview(1);
+
+        // Initialize chapters list once
+        if (!AppState.toc.chapters.length) {
+          setChapters([{ title: "", page: "" }], { saveHistory: true });
         }
-      },
 
-      async getPageTextItems(pageNum) {
-        const page = await AppState.pdf.doc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 1 }); // Base scale for calc
-        const textContent = await page.getTextContent({ includeMarkedContent: false });
-        
-        return textContent.items.map(item => {
-          // Transform PDF coords to Viewport coords (Top-Left origin)
-          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-          
-          return {
-            str: item.str,
-            hasEOL: item.hasEOL, // Crucial for line detection
-            x: tx[4],
-            y: tx[5],
-            w: item.width, // Approximate
-            h: item.height, // Approximate
-            // Normalized coords for crop filtering
-            normX: tx[4] / viewport.width,
-            normY: tx[5] / viewport.height
-          };
-        });
+        updatePageRangeHint();
+        validateAllChapters();
+        updateFrontMatterDisplay();
       }
-    };
 
-    /**
-     * MODULE: PARSER
-     * The "Smart" Logic: Geometric Parsing + Median X
-     */
-    const Parser = {
-      // 1. Filter items outside the user's crop box
-      filterByCrop(items) {
-        const c = AppState.ui.crop;
-        if (!c) return items;
-        return items.filter(i => 
-          i.normX >= c.x && i.normX <= (c.x + c.w) &&
-          i.normY >= c.y && i.normY <= (c.y + c.h)
-        );
-      },
+      async function loadFromDropboxUrl(url) {
+        const clean = (url || "").trim();
+        if (!clean) throw new Error("Please enter a URL");
+        if (!clean.includes("dropbox.com")) throw new Error("Only Dropbox URLs are supported.");
 
-      // 2. Group items into lines using Y-coord clustering AND hasEOL
-      assembleLines(items) {
-        // Sort by Y then X
-        items.sort((a, b) => {
-          const dy = Math.abs(a.y - b.y);
-          if (dy < 4) return a.x - b.x; // Same line roughly
-          return a.y - b.y;
+        if (urlFetchController) urlFetchController.abort();
+        urlFetchController = new AbortController();
+
+        const proxyUrl = CORS_PROXY + "/?url=" + encodeURIComponent(clean);
+        const resp = await fetch(proxyUrl, { signal: urlFetchController.signal });
+        if (!resp.ok) {
+          let msg = "HTTP " + resp.status;
+          try {
+            const j = await resp.json();
+            if (j && j.error) msg = j.error;
+          } catch (e) {}
+          throw new Error(msg);
+        }
+
+        const bytes = await resp.arrayBuffer();
+        const urlPath = new URL(clean).pathname;
+        const filename = decodeURIComponent(urlPath.split("/").pop()) || "document.pdf";
+        await loadFromBytes(bytes, filename);
+      }
+
+      async function renderPreview(pageNum) {
+        if (!AppState.pdf.doc) return;
+        const p = Math.max(1, Math.min(AppState.pdf.pageCount, pageNum));
+        AppState.ui.currentPreviewPage = p;
+        El.previewPageNum.textContent = "Page " + p;
+
+        const page = await AppState.pdf.doc.getPage(p);
+        const scale = parseFloat(El.previewScale.value) || 2;
+        const viewport = page.getViewport({ scale });
+
+        const canvas = El.previewCanvas;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+      }
+
+      async function getTextItemsWithViewport(pageNum, scaleForGeometry) {
+        const page = await AppState.pdf.doc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: scaleForGeometry || 1 });
+        const textContent = await page.getTextContent();
+
+        // TextItem has hasEOL in PDF.js, which indicates end of line in the text stream. :contentReference[oaicite:3]{index=3}
+        const items = (textContent.items || [])
+          .filter(it => it && typeof it.str === "string" && it.str.trim() !== "")
+          .map(it => {
+            let x = 0, y = 0;
+            try {
+              const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
+              x = tx[4] || 0;
+              y = tx[5] || 0;
+            } catch (e) {
+              x = it.transform && it.transform[4] ? it.transform[4] : 0;
+              y = it.transform && it.transform[5] ? it.transform[5] : 0;
+            }
+
+            const w = typeof it.width === "number" ? it.width : 0;
+            const h = typeof it.height === "number" ? it.height : 0;
+            return {
+              str: it.str,
+              x, y, w, h,
+              hasEOL: !!it.hasEOL
+            };
+          });
+
+        return { items, viewport };
+      }
+
+      async function renderPageToCanvas(pageNum, dpi) {
+        // dpi is approximate: PDF points are 72 dpi.
+        const page = await AppState.pdf.doc.getPage(pageNum);
+        const scale = Math.max(1, (dpi || 300) / 72);
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+
+        // Turn off interpolation for sharper text
+        ctx.imageSmoothingEnabled = false;
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        return canvas;
+      }
+
+      return {
+        loadFromBytes,
+        loadFromDropboxUrl,
+        renderPreview,
+        getTextItemsWithViewport,
+        renderPageToCanvas
+      };
+    })();
+
+    /**********************************************************************
+     * 6) Page token to PDF index mapping (Arabic + Roman + labels + inference)
+     **********************************************************************/
+    function pageTokenToPdfIndex(token) {
+      const t = normalizePageToken(token).toLowerCase();
+      if (!t) return null;
+
+      const total = AppState.pdf.pageCount || 0;
+      const pageOffset = safeParseInt(El.pageOffset.value) || 1;
+
+      // Arabic
+      if (/^\d+$/.test(t)) {
+        const pageNum = safeParseInt(t);
+        const pdfIndex = (pageNum - 1) + (pageOffset - 1);
+        return (pdfIndex >= 0 && pdfIndex < total) ? pdfIndex : null;
+      }
+
+      // Roman
+      if (isRomanNumeralToken(t)) {
+        if (AppState.pdf.pageLabelIndexByLabel && AppState.pdf.pageLabelIndexByLabel.has(t)) {
+          return AppState.pdf.pageLabelIndexByLabel.get(t);
+        }
+
+        const rv = romanToInt(t);
+        const maxRoman = AppState.toc.detectedMaxRoman || 0;
+
+        // If we saw roman pages in the ToC, infer roman block ends just before Arabic 1 (pageOffset)
+        if (Number.isFinite(rv) && rv > 0 && maxRoman > 0 && pageOffset > 1) {
+          const pdfIndex = (pageOffset - maxRoman + rv - 2);
+          return (pdfIndex >= 0 && pdfIndex < total) ? pdfIndex : null;
+        }
+      }
+
+      return null;
+    }
+
+    /**********************************************************************
+     * 7) Geometry based ToC extraction and parsing
+     **********************************************************************/
+    const TocService = (function(){
+      function isPageTokenStr(s) {
+        const t = normalizePageToken(s);
+        if (!t) return false;
+        if (/^\d+$/.test(t)) return true;
+        if (isRomanNumeralToken(t)) return true;
+        return false;
+      }
+
+      function stripLeaderNoise(s) {
+        return String(s || "").replace(/[._·•]{2,}/g, " ").replace(/\s+/g, " ").trim();
+      }
+
+      function groupItemsIntoLines(items) {
+        // Sort roughly top to bottom, left to right.
+        const sorted = [...items].sort((a, b) => {
+          const dy = a.y - b.y;
+          if (Math.abs(dy) > 2) return dy;
+          return a.x - b.x;
         });
 
         const lines = [];
-        let currentLine = { text: "", items: [], y: 0 };
+        let current = null;
 
-        items.forEach((item, idx) => {
-          if (idx === 0) {
-            currentLine = { text: item.str, items: [item], y: item.y };
-            return;
+        const pushLine = () => {
+          if (!current || !current.items.length) return;
+          current.items.sort((a, b) => a.x - b.x);
+          lines.push(current);
+        };
+
+        for (const it of sorted) {
+          const tol = Math.max(2.5, (it.h || 0) * 0.7);
+          if (!current) {
+            current = { y: it.y, h: it.h || 0, items: [it] };
+            continue;
           }
-
-          const prev = items[idx - 1];
-          // Logic: New line if explicit EOL OR significant Y jump
-          const isNewLine = prev.hasEOL || Math.abs(item.y - currentLine.y) > 8;
-
-          if (isNewLine) {
-            lines.push(currentLine);
-            currentLine = { text: item.str, items: [item], y: item.y };
+          const yDiff = Math.abs(it.y - current.y);
+          const lineTol = Math.max(tol, Math.max(2.5, (current.h || 0) * 0.7));
+          if (yDiff <= lineTol) {
+            current.items.push(it);
+            current.y = (current.y * (current.items.length - 1) + it.y) / current.items.length;
+            current.h = Math.max(current.h || 0, it.h || 0);
           } else {
-            // Add space if gap is detected
-            const gap = item.x - (prev.x + prev.w);
-            const separator = gap > 4 ? " " : ""; 
-            currentLine.text += separator + item.str;
-            currentLine.items.push(item);
+            pushLine();
+            current = { y: it.y, h: it.h || 0, items: [it] };
           }
-        });
-        if (currentLine.items.length) lines.push(currentLine);
+        }
+        pushLine();
         return lines;
-      },
-
-      // 3. Geometric Parsing (Median X Strategy)
-      parseChapters(lines) {
-        const chapters = [];
-        const pageTokens = [];
-
-        // A. Collect all potential page numbers to analyze layout
-        lines.forEach(line => {
-          const t = line.text.trim();
-          // Look for digits at start or end
-          const endMatch = t.match(/(\d+|[ivxlcdm]+)$/i);
-          const startMatch = t.match(/^(\d+|[ivxlcdm]+)\s/i);
-
-          if (endMatch) {
-            const item = line.items[line.items.length - 1];
-            pageTokens.push({ val: endMatch[1], x: item.x, type: 'end' });
-          }
-          if (startMatch) {
-            const item = line.items[0];
-            pageTokens.push({ val: startMatch[1], x: item.x, type: 'start' });
-          }
-        });
-
-        if (pageTokens.length === 0) return [];
-
-        // B. Calculate Median X to determine column layout
-        pageTokens.sort((a, b) => a.x - b.x);
-        const medianX = pageTokens[Math.floor(pageTokens.length / 2)].x;
-        
-        // Heuristic: If median X is large, page numbers are on the right.
-        // We need page width context, but usually > 300px is "Right" in standard PDF coords
-        // Let's use the distribution of types ('start' vs 'end') as a secondary check
-        const endCount = pageTokens.filter(t => t.type === 'end').length;
-        const startCount = pageTokens.filter(t => t.type === 'start').length;
-        
-        const isPageRight = endCount >= startCount;
-
-        // C. Parse based on detected layout
-        lines.forEach(line => {
-          let title = "", page = "";
-          const text = line.text.trim();
-          
-          if (isPageRight) {
-            // Regex: Title ... Page
-            // Matches: "Chapter 1... 5", "Chapter 1 5"
-            const m = text.match(/^(.*?)(?:\s|\.|…|_)+(\d+|[ivxlcdm]+)$/i);
-            if (m) { title = m[1]; page = m[2]; }
-          } else {
-            // Regex: Page ... Title
-            const m = text.match(/^(\d+|[ivxlcdm]+)(?:\s|\.|…|_)+(.*)$/i);
-            if (m) { page = m[1]; title = m[2]; }
-          }
-
-          if (title && page && title.length > 2) {
-            // Cleanup title
-            title = title.replace(/(\.|…|_)+$/, "").trim();
-            chapters.push({ title, page });
-          }
-        });
-
-        return chapters;
       }
-    };
 
-    /**
-     * MODULE: UI CONTROLLER
-     */
-    const UI = {
-      init() {
-        document.querySelectorAll('.hidden').forEach(el => el.classList.remove('hidden'));
-        document.getElementById('file-info').textContent = 
-          `Loaded: ${AppState.pdf.filename} (${AppState.pdf.totalPages} pages)`;
-        
-        document.getElementById('page-offset').max = AppState.pdf.totalPages;
-        document.getElementById('toc-start').max = AppState.pdf.totalPages;
-        document.getElementById('toc-end').max = AppState.pdf.totalPages;
-        
-        this.renderPreview();
-        this.setupCropHandlers();
-      },
+      function assembleLineTextFromItems(items) {
+        let out = "";
+        let prev = null;
 
-      async renderPreview() {
-        const canvas = document.getElementById('preview-canvas');
-        const ctx = canvas.getContext('2d');
-        const page = await AppState.pdf.doc.getPage(AppState.ui.currentPage);
-        const viewport = page.getViewport({ scale: AppState.ui.scale });
-
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        
-        document.getElementById('preview-page-label').textContent = `Page ${AppState.ui.currentPage}`;
-        this.drawCropBox(); // Redraw box if exists
-      },
-
-      changePage(delta) {
-        const newPage = AppState.ui.currentPage + delta;
-        if (newPage >= 1 && newPage <= AppState.pdf.totalPages) {
-          AppState.ui.currentPage = newPage;
-          this.renderPreview();
-        }
-      },
-
-      // --- Crop Tool Logic ---
-      setupCropHandlers() {
-        const overlay = document.getElementById('crop-overlay');
-        
-        overlay.onmousedown = (e) => {
-          AppState.ui.isDragging = true;
-          const rect = overlay.getBoundingClientRect();
-          AppState.ui.dragStart = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
-          };
-          // Create/Reset crop box div
-          let box = document.getElementById('active-crop-box');
-          if (!box) {
-            box = document.createElement('div');
-            box.id = 'active-crop-box';
-            box.className = 'crop-box';
-            overlay.appendChild(box);
+        for (const it of items) {
+          const chunk = String(it.str).replace(/\s+/g, " ").trim();
+          if (!chunk) continue;
+          if (!prev) {
+            out += chunk;
+            prev = it;
+            continue;
           }
-          box.style.left = AppState.ui.dragStart.x + 'px';
-          box.style.top = AppState.ui.dragStart.y + 'px';
-          box.style.width = '0px';
-          box.style.height = '0px';
-        };
-
-        overlay.onmousemove = (e) => {
-          if (!AppState.ui.isDragging) return;
-          const rect = overlay.getBoundingClientRect();
-          const currentX = e.clientX - rect.left;
-          const currentY = e.clientY - rect.top;
-          
-          const width = currentX - AppState.ui.dragStart.x;
-          const height = currentY - AppState.ui.dragStart.y;
-
-          const box = document.getElementById('active-crop-box');
-          box.style.width = Math.abs(width) + 'px';
-          box.style.height = Math.abs(height) + 'px';
-          box.style.left = (width < 0 ? currentX : AppState.ui.dragStart.x) + 'px';
-          box.style.top = (height < 0 ? currentY : AppState.ui.dragStart.y) + 'px';
-        };
-
-        overlay.onmouseup = (e) => {
-          if (!AppState.ui.isDragging) return;
-          AppState.ui.isDragging = false;
-          
-          // Save Normalized Coordinates (0.0 to 1.0)
-          const overlayRect = overlay.getBoundingClientRect();
-          const box = document.getElementById('active-crop-box');
-          
-          // Parse pixel values from style
-          const x = parseFloat(box.style.left);
-          const y = parseFloat(box.style.top);
-          const w = parseFloat(box.style.width);
-          const h = parseFloat(box.style.height);
-
-          if (w > 10 && h > 10) {
-            AppState.ui.crop = {
-              x: x / overlayRect.width,
-              y: y / overlayRect.height,
-              w: w / overlayRect.width,
-              h: h / overlayRect.height
-            };
-          } else {
-            // Click without drag = clear crop
-            this.resetCrop();
-          }
-        };
-      },
-
-      drawCropBox() {
-        const overlay = document.getElementById('crop-overlay');
-        overlay.innerHTML = ''; // Clear
-        if (AppState.ui.crop) {
-          const box = document.createElement('div');
-          box.className = 'crop-box';
-          box.style.left = (AppState.ui.crop.x * 100) + '%';
-          box.style.top = (AppState.ui.crop.y * 100) + '%';
-          box.style.width = (AppState.ui.crop.w * 100) + '%';
-          box.style.height = (AppState.ui.crop.h * 100) + '%';
-          overlay.appendChild(box);
+          const prevEndX = (prev.x || 0) + (prev.w || 0);
+          const gap = (it.x || 0) - prevEndX;
+          const prevCharW = (prev.w && prev.str) ? (prev.w / Math.max(prev.str.length, 1)) : 0;
+          const curCharW = (it.w && it.str) ? (it.w / Math.max(it.str.length, 1)) : 0;
+          const charW = Math.max(1.5, prevCharW || 0, curCharW || 0);
+          if (gap > charW * 0.9) out += " ";
+          out += chunk;
+          prev = it;
         }
-      },
-
-      resetCrop() {
-        AppState.ui.crop = null;
-        this.drawCropBox();
-      },
-
-      // --- Chapter List UI ---
-      renderChapters() {
-        const container = document.getElementById('chapter-list');
-        container.innerHTML = '';
-        
-        AppState.toc.chapters.forEach((ch, idx) => {
-          const row = document.createElement('div');
-          row.className = 'chapter-row';
-          row.draggable = true;
-          row.innerHTML = `
-            <span class="drag-handle">⋮⋮</span>
-            <input type="text" class="chapter-title" value="${ch.title}" onchange="Actions.updateChapter(${idx}, 'title', this.value)">
-            <input type="text" class="chapter-page" value="${ch.page}" onchange="Actions.updateChapter(${idx}, 'page', this.value)">
-            <button class="danger sm" onclick="Actions.removeChapter(${idx})">✕</button>
-          `;
-          
-          // Drag Events
-          row.ondragstart = () => row.classList.add('dragging');
-          row.ondragend = () => {
-            row.classList.remove('dragging');
-            Actions.reorderChapters();
-          };
-          row.ondragover = (e) => {
-            e.preventDefault();
-            const dragging = document.querySelector('.dragging');
-            if (dragging && dragging !== row) {
-              const box = row.getBoundingClientRect();
-              const offset = e.clientY - box.top - box.height / 2;
-              if (offset < 0) container.insertBefore(dragging, row);
-              else container.insertBefore(dragging, row.nextSibling);
-            }
-          };
-
-          container.appendChild(row);
-        });
-      },
-
-      setStatus(id, msg, type) {
-        const el = document.getElementById(id);
-        el.textContent = msg;
-        el.className = `status-box ${type}`;
-        el.classList.remove('hidden');
+        return out.trim();
       }
-    };
 
-    /**
-     * MODULE: ACTIONS (Business Logic)
-     */
-    const Actions = {
-      async extractToc() {
-        const start = parseInt(document.getElementById('toc-start').value);
-        const end = parseInt(document.getElementById('toc-end').value);
-        
-        UI.setStatus('extract-status', 'Extracting text...', 'processing');
-        
-        try {
-          let allLines = [];
-          for (let p = start; p <= end; p++) {
-            const items = await PdfService.getPageTextItems(p);
-            const filtered = Parser.filterByCrop(items);
-            const lines = Parser.assembleLines(filtered);
-            allLines = allLines.concat(lines);
+      function detectPageNumberSide(lines, viewport) {
+        // Find candidate page number tokens in lines, look at x distribution.
+        const w = viewport.width || 1;
+        const xs = [];
+        for (const ln of lines) {
+          for (const it of ln.items) {
+            const t = normalizePageToken(it.str);
+            if (isPageTokenStr(t)) xs.push(it.x / w);
           }
-
-          const chapters = Parser.parseChapters(allLines);
-          
-          if (chapters.length > 0) {
-            AppState.toc.chapters = chapters;
-            UI.renderChapters();
-            UI.setStatus('extract-status', `Success! Found ${chapters.length} chapters.`, 'success');
-          } else {
-            UI.setStatus('extract-status', 'No chapters found. Try adjusting the crop box or page range.', 'error');
-          }
-        } catch (e) {
-          console.error(e);
-          UI.setStatus('extract-status', 'Error: ' + e.message, 'error');
         }
-      },
+        if (xs.length < 6) return "unknown";
 
-      async runOcr() {
-        // Simple fallback: Ask user to paste image or use current canvas
-        // For this demo, we'll grab the current preview canvas
-        UI.setStatus('extract-status', 'Running OCR on current preview...', 'processing');
-        const canvas = document.getElementById('preview-canvas');
-        
-        try {
-          const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
-            logger: m => {
-              if (m.status === 'recognizing text') 
-                UI.setStatus('extract-status', `OCR: ${Math.round(m.progress * 100)}%`, 'processing');
+        const left = xs.filter(v => v < 0.25).length / xs.length;
+        const right = xs.filter(v => v > 0.75).length / xs.length;
+
+        if (right >= 0.65) return "right";
+        if (left >= 0.65) return "left";
+        return "unknown";
+      }
+
+      function splitColumns(lines, viewport) {
+        // Simple 2 column detection: if many line starts cluster on both sides.
+        const w = viewport.width || 1;
+        const starts = lines
+          .map(ln => {
+            const minX = ln.items.length ? Math.min(...ln.items.map(i => i.x)) : 0;
+            return minX / w;
+          })
+          .filter(v => v > 0);
+
+        if (starts.length < 10) return [lines];
+
+        const left = starts.filter(v => v < 0.45).length / starts.length;
+        const right = starts.filter(v => v > 0.55).length / starts.length;
+
+        if (left > 0.25 && right > 0.25) {
+          const mid = 0.5;
+          const a = [];
+          const b = [];
+          for (const ln of lines) {
+            const minX = ln.items.length ? Math.min(...ln.items.map(i => i.x)) : 0;
+            const pct = minX / w;
+            if (pct < mid) a.push(ln);
+            else b.push(ln);
+          }
+          return [a, b].filter(col => col.length);
+        }
+
+        return [lines];
+      }
+
+      function extractEntriesFromLines(lines, side, viewport) {
+        const entries = [];
+        const w = viewport.width || 1;
+
+        let bufferedTitle = "";
+        let bufferedPrefix = "";
+
+        // Prefix patterns
+        const chapterMarkerPattern = /^(chapter|capítulo|capitulo|chapitre|kapitel|capitolo|parte|part|teil|section|sección|seccion)\s*(\d+)\.?$/i;
+        const sectionHeaderPattern = /^(introducción|introduction|conclusión|conclusion|apéndices|appendices|prefacio|preface|foreword|prologue)$/i;
+
+        function pushEntry(title, pageToken) {
+          const cleanTitle = stripLeaderNoise(title);
+          const page = normalizePageToken(pageToken);
+          if (!cleanTitle || !page) return;
+          entries.push({ title: cleanTitle, page });
+        }
+
+        for (const ln of lines) {
+          const text = assembleLineTextFromItems(ln.items);
+          const trimmed = stripLeaderNoise(text);
+
+          if (!trimmed) continue;
+
+          // Section/chapter prefix capturing
+          if (sectionHeaderPattern.test(trimmed)) {
+            bufferedPrefix = trimmed.replace(/\.?$/, "");
+            continue;
+          }
+          if (chapterMarkerPattern.test(trimmed)) {
+            bufferedTitle = trimmed.replace(/\.?$/, "");
+            continue;
+          }
+
+          // Identify page token item by geometry:
+          const candidates = ln.items
+            .map(it => ({ it, token: normalizePageToken(it.str) }))
+            .filter(o => isPageTokenStr(o.token));
+
+          const lineOnlyToken = candidates.length === 1 && stripLeaderNoise(trimmed) === candidates[0].token;
+          if (lineOnlyToken) {
+            // standalone page token line, attach to previous buffered title if present
+            if (bufferedTitle || bufferedPrefix) {
+              const t = bufferedTitle || "";
+              const full = bufferedPrefix ? bufferedPrefix + ": " + t : t;
+              pushEntry(full, candidates[0].token);
+              bufferedTitle = "";
+              bufferedPrefix = "";
             }
-          });
-
-          // Convert OCR text to pseudo-lines for the parser
-          const lines = text.split('\n').map(t => ({ text: t, items: [{x: 10}] })); // Mock items
-          const chapters = Parser.parseChapters(lines);
-          
-          if (chapters.length) {
-            AppState.toc.chapters = [...AppState.toc.chapters, ...chapters];
-            UI.renderChapters();
-            UI.setStatus('extract-status', `OCR added ${chapters.length} chapters.`, 'success');
-          } else {
-            UI.setStatus('extract-status', 'OCR finished but found no chapters.', 'error');
+            continue;
           }
-        } catch (e) {
-          UI.setStatus('extract-status', 'OCR Failed: ' + e.message, 'error');
+
+          if (!candidates.length) {
+            // accumulate buffer for wrapped titles
+            bufferedTitle = bufferedTitle ? (bufferedTitle + " " + trimmed) : trimmed;
+            continue;
+          }
+
+          // Choose page token based on side.
+          let chosen = null;
+          if (side === "left") {
+            chosen = candidates.reduce((a, b) => (a.it.x < b.it.x ? a : b));
+          } else if (side === "right") {
+            chosen = candidates.reduce((a, b) => (a.it.x > b.it.x ? a : b));
+          } else {
+            // fallback: pick the rightmost token if it's in far right, else leftmost
+            const rightMost = candidates.reduce((a, b) => (a.it.x > b.it.x ? a : b));
+            const leftMost = candidates.reduce((a, b) => (a.it.x < b.it.x ? a : b));
+            const rp = rightMost.it.x / w;
+            const lp = leftMost.it.x / w;
+            chosen = rp > 0.6 ? rightMost : (lp < 0.4 ? leftMost : rightMost);
+          }
+
+          // Title is everything except chosen token and any leader noise.
+          const filtered = ln.items.filter(it => it !== chosen.it);
+          let titleText = stripLeaderNoise(assembleLineTextFromItems(filtered));
+
+          // If there is a bufferedTitle, prepend it.
+          if (bufferedTitle) titleText = (bufferedTitle + " " + titleText).trim();
+
+          // If prefix exists, prefix it.
+          if (bufferedPrefix) titleText = bufferedPrefix + ": " + titleText;
+
+          // Reset buffers
+          bufferedTitle = "";
+          bufferedPrefix = "";
+
+          // Guard against cases where title becomes empty
+          if (titleText && chosen.token) pushEntry(titleText, chosen.token);
         }
-      },
 
-      addChapter() {
-        AppState.toc.chapters.push({ title: "", page: "" });
-        UI.renderChapters();
-      },
+        return entries;
+      }
 
-      removeChapter(idx) {
-        AppState.toc.chapters.splice(idx, 1);
-        UI.renderChapters();
-      },
+      async function extractFromPdfRange(startPage, endPage, statusCb) {
+        const entries = [];
+        const rawLines = [];
 
-      updateChapter(idx, field, val) {
-        AppState.toc.chapters[idx][field] = val;
-      },
+        for (let p = startPage; p <= endPage; p++) {
+          if (statusCb) statusCb("Extracting page " + p + " of " + endPage + "...");
+          const { items, viewport } = await PdfService.getTextItemsWithViewport(p, 1);
 
-      clearChapters() {
-        if(confirm("Clear all chapters?")) {
-          AppState.toc.chapters = [];
-          UI.renderChapters();
+          if (!items.length) {
+            rawLines.push("");
+            continue;
+          }
+
+          // Prefer hasEOL if items arrive in content order; otherwise grouping still works.
+          // PDF.js TextItem hasEOL indicates end of line. :contentReference[oaicite:4]{index=4}
+          const hasAnyEol = items.some(it => it.hasEOL);
+          let lines;
+
+          if (hasAnyEol) {
+            const streamLines = [];
+            let cur = [];
+            for (const it of items) {
+              cur.push(it);
+              if (it.hasEOL) {
+                cur.sort((a, b) => a.x - b.x);
+                streamLines.push({ items: cur });
+                cur = [];
+              }
+            }
+            if (cur.length) {
+              cur.sort((a, b) => a.x - b.x);
+              streamLines.push({ items: cur });
+            }
+            lines = streamLines;
+          } else {
+            lines = groupItemsIntoLines(items);
+          }
+
+          const side = detectPageNumberSide(lines, viewport);
+          const columns = splitColumns(lines, viewport);
+
+          for (const col of columns) {
+            const pageEntries = extractEntriesFromLines(col, side, viewport);
+            entries.push(...pageEntries);
+          }
+
+          // raw debug
+          for (const ln of lines) rawLines.push(assembleLineTextFromItems(ln.items));
+          rawLines.push("");
         }
-      },
 
-      reorderChapters() {
-        // Scrape DOM to update state order
-        const newChapters = [];
-        document.querySelectorAll('.chapter-row').forEach(row => {
-          newChapters.push({
-            title: row.querySelector('.chapter-title').value,
-            page: row.querySelector('.chapter-page').value
-          });
-        });
-        AppState.toc.chapters = newChapters;
-      },
+        return {
+          entries,
+          rawText: rawLines.join("\n").trim()
+        };
+      }
 
-      sortChapters() {
-        AppState.toc.chapters.sort((a, b) => {
-          const pa = parseInt(a.page) || 0;
-          const pb = parseInt(b.page) || 0;
-          return pa - pb;
-        });
-        UI.renderChapters();
-      },
+      function detectMaxRoman(entries) {
+        let max = 0;
+        for (const e of entries || []) {
+          const v = romanToInt(e.page);
+          if (Number.isFinite(v)) max = Math.max(max, v);
+        }
+        return max;
+      }
 
-      setRangeToCurrent() {
-        const p = AppState.ui.currentPage;
-        document.getElementById('toc-start').value = p;
-        document.getElementById('toc-end').value = p;
-      },
+      function findMainContentStartFromEntries(entries) {
+        for (const e of entries || []) {
+          const foldedTitle = foldText(e.title || "");
+          const stripped = foldedTitle.replace(/^(chapter|capitulo|capitolo|chapitre|kapitel|parte|part|teil|section|seccion)\s+\d+\s+/i, "");
 
-      async generatePdf() {
-        if (!AppState.pdf.bytes) return;
-        
-        UI.setStatus('gen-status', 'Generating PDF...', 'processing');
-        
-        try {
-          const { PDFDocument, PDFName, PDFNumber, PDFString } = PDFLib;
-          const doc = await PDFDocument.load(AppState.pdf.bytes);
-          const context = doc.context;
-          const offset = parseInt(document.getElementById('page-offset').value) || 1;
+          const matchExact = MAIN_CONTENT_HEADINGS.has(stripped) || MAIN_CONTENT_HEADINGS.has(foldedTitle);
+          const matchPrefix = Array.from(MAIN_CONTENT_HEADINGS).some(h => stripped.startsWith(h + " ") || foldedTitle.startsWith(h + " "));
 
-          // 1. Create Outlines
-          const refs = [];
-          const outlineItems = [];
+          if (matchExact || matchPrefix) {
+            const idx = pageTokenToPdfIndex(e.page);
+            if (idx !== null) return idx + 1;
+          }
+        }
+        return null;
+      }
 
-          // Add Front Matter bookmark if offset > 1
-          if (offset > 1) outlineItems.push({ title: "Front Matter", pageIdx: 0 });
+      return {
+        extractFromPdfRange,
+        detectMaxRoman,
+        findMainContentStartFromEntries
+      };
+    })();
 
-          AppState.toc.chapters.forEach(ch => {
-            const pageNum = parseInt(ch.page);
-            if (!isNaN(pageNum)) {
-              // Convert "Book Page" to "PDF Index"
-              const pdfIdx = (pageNum - 1) + (offset - 1);
-              if (pdfIdx < AppState.pdf.totalPages) {
-                outlineItems.push({ title: ch.title, pageIdx: pdfIdx });
+    /**********************************************************************
+     * 8) OCR service (OCR the PDF pages directly)
+     **********************************************************************/
+    const OcrService = (function(){
+      async function ensureScheduler(langsArray, oem, statusCb) {
+        const langsKey = (langsArray || []).join(",");
+        const desiredOem = Number.isFinite(oem) ? oem : 1;
+
+        if (AppState.ocr.scheduler && AppState.ocr.lastLangsKey === langsKey && AppState.ocr.lastOem === desiredOem) {
+          return AppState.ocr.scheduler;
+        }
+
+        // Tear down existing
+        if (AppState.ocr.scheduler) {
+          try { await AppState.ocr.scheduler.terminate(); } catch (e) {}
+        }
+        AppState.ocr.scheduler = null;
+        AppState.ocr.workers = [];
+
+        const { createWorker, createScheduler } = Tesseract;
+        const scheduler = createScheduler();
+
+        // Default to 1 worker for stability
+        const workerCount = 1;
+
+        for (let i = 0; i < workerCount; i++) {
+          if (statusCb) statusCb("Initializing OCR worker " + (i + 1) + " of " + workerCount + "...");
+          // createWorker(langs, oem, options) supports logger and init config. :contentReference[oaicite:5]{index=5}
+          const worker = await createWorker(langsArray, desiredOem, {
+            logger: (m) => {
+              if (statusCb && m && m.status === "recognizing text") {
+                statusCb("OCR progress: " + Math.round((m.progress || 0) * 100) + "%");
               }
             }
           });
+          scheduler.addWorker(worker);
+          AppState.ocr.workers.push(worker);
+        }
 
-          if (outlineItems.length === 0) throw new Error("No valid chapters to add.");
+        AppState.ocr.scheduler = scheduler;
+        AppState.ocr.lastLangsKey = langsKey;
+        AppState.ocr.lastOem = desiredOem;
+        return scheduler;
+      }
 
-          // Build PDF structure
+      function toGrayscaleAndContrast(imageData) {
+        const d = imageData.data;
+        let min = 255, max = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const g = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+          const gi = g | 0;
+          if (gi < min) min = gi;
+          if (gi > max) max = gi;
+          d[i] = d[i + 1] = d[i + 2] = gi;
+        }
+        const range = Math.max(1, max - min);
+        for (let i = 0; i < d.length; i += 4) {
+          const g = d[i];
+          const stretched = ((g - min) * 255) / range;
+          d[i] = d[i + 1] = d[i + 2] = stretched | 0;
+        }
+        return imageData;
+      }
+
+      function otsuThreshold(grayImageData) {
+        const d = grayImageData.data;
+        const hist = new Array(256).fill(0);
+        let total = 0;
+
+        for (let i = 0; i < d.length; i += 4) {
+          hist[d[i]]++;
+          total++;
+        }
+
+        let sum = 0;
+        for (let i = 0; i < 256; i++) sum += i * hist[i];
+
+        let sumB = 0;
+        let wB = 0;
+        let wF = 0;
+        let varMax = 0;
+        let threshold = 128;
+
+        for (let t = 0; t < 256; t++) {
+          wB += hist[t];
+          if (wB === 0) continue;
+          wF = total - wB;
+          if (wF === 0) break;
+
+          sumB += t * hist[t];
+          const mB = sumB / wB;
+          const mF = (sum - sumB) / wF;
+
+          const varBetween = wB * wF * (mB - mF) * (mB - mF);
+          if (varBetween > varMax) {
+            varMax = varBetween;
+            threshold = t;
+          }
+        }
+        return threshold;
+      }
+
+      function binarize(grayImageData) {
+        const d = grayImageData.data;
+        const t = otsuThreshold(grayImageData);
+        // Decide inversion based on average brightness
+        let sum = 0;
+        for (let i = 0; i < d.length; i += 4) sum += d[i];
+        const avg = sum / (d.length / 4);
+        const invert = avg < 128;
+
+        for (let i = 0; i < d.length; i += 4) {
+          const g = d[i];
+          let v = g > t ? 255 : 0;
+          if (invert) v = 255 - v;
+          d[i] = d[i + 1] = d[i + 2] = v;
+        }
+        return grayImageData;
+      }
+
+      function autoCropToInk(canvas, pad) {
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        const { width, height } = canvas;
+        const img = ctx.getImageData(0, 0, width, height);
+        const d = img.data;
+
+        let minX = width, minY = height, maxX = 0, maxY = 0;
+        let found = false;
+
+        // Look for non-white pixels
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const i = (y * width + x) * 4;
+            const v = d[i]; // after preprocess this is 0 or 255 often
+            if (v < 250) {
+              found = true;
+              if (x < minX) minX = x;
+              if (y < minY) minY = y;
+              if (x > maxX) maxX = x;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        if (!found) return canvas;
+
+        const p = Math.max(0, pad || 18);
+        minX = Math.max(0, minX - p);
+        minY = Math.max(0, minY - p);
+        maxX = Math.min(width - 1, maxX + p);
+        maxY = Math.min(height - 1, maxY + p);
+
+        const cropW = Math.max(1, maxX - minX + 1);
+        const cropH = Math.max(1, maxY - minY + 1);
+
+        const out = document.createElement("canvas");
+        out.width = cropW;
+        out.height = cropH;
+        const outCtx = out.getContext("2d", { willReadFrequently: true });
+        outCtx.putImageData(ctx.getImageData(minX, minY, cropW, cropH), 0, 0);
+        return out;
+      }
+
+      function preprocessCanvas(canvas, mode) {
+        if (!canvas) return canvas;
+        if (mode === "none") return canvas;
+
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        let out = toGrayscaleAndContrast(img);
+        if (mode === "adaptive") out = binarize(out);
+
+        ctx.putImageData(out, 0, 0);
+
+        // Auto crop after binarization
+        if (mode === "adaptive") return autoCropToInk(canvas, 18);
+        return canvas;
+      }
+
+      async function ocrPdfRange(startPage, endPage, options, statusCb) {
+        const langs = String(options.langs || "spa,eng")
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean);
+
+        const psm = safeParseInt(options.psm) || 6;
+        const dpi = safeParseInt(options.dpi) || 300;
+        const preprocess = options.preprocess || "adaptive";
+
+        const scheduler = await ensureScheduler(langs, 1, statusCb);
+
+        // Set parameters: tessedit_pageseg_mode, preserve_interword_spaces, user_defined_dpi. :contentReference[oaicite:6]{index=6}
+        for (const w of AppState.ocr.workers) {
+          await w.setParameters({
+            tessedit_pageseg_mode: psm,
+            preserve_interword_spaces: "1",
+            user_defined_dpi: String(dpi)
+          });
+        }
+
+        let fullText = "";
+        for (let p = startPage; p <= endPage; p++) {
+          if (statusCb) statusCb("Rendering page " + p + " at " + dpi + " DPI...");
+          let canvas = await PdfService.renderPageToCanvas(p, dpi);
+          canvas = preprocessCanvas(canvas, preprocess);
+
+          if (statusCb) statusCb("OCR page " + p + " of " + endPage + "...");
+          const result = await scheduler.addJob("recognize", canvas, {});
+          const text = (result && result.data && result.data.text) ? result.data.text : "";
+          fullText += text + "\n";
+        }
+        return fullText;
+      }
+
+      async function terminate() {
+        if (AppState.ocr.scheduler) {
+          try { await AppState.ocr.scheduler.terminate(); } catch (e) {}
+        }
+        AppState.ocr.scheduler = null;
+        AppState.ocr.workers = [];
+      }
+
+      return { ocrPdfRange, terminate };
+    })();
+
+    window.addEventListener("unload", async () => {
+      await OcrService.terminate();
+    });
+
+    /**********************************************************************
+     * 9) UI state: chapters list rendering and validation
+     **********************************************************************/
+    function resetChaptersAndHistory() {
+      AppState.toc.chapters = [];
+      El.chapterList.innerHTML = "";
+      AppState.history.stack = [];
+      AppState.history.index = -1;
+      updateHistoryButtons();
+      saveStateToHistory();
+    }
+
+    function setChapters(chapters, opts) {
+      const saveHistory = !opts || opts.saveHistory !== false;
+      AppState.toc.chapters = (chapters || []).map(c => ({
+        title: c.title || "",
+        page: c.page || ""
+      }));
+      renderChapterList();
+      if (saveHistory) saveStateToHistory();
+    }
+
+    function renderChapterList() {
+      El.chapterList.innerHTML = "";
+      for (const ch of (AppState.toc.chapters || [])) addChapterRow(ch.title, ch.page, { saveHistory: false });
+      validateAllChapters();
+    }
+
+    function addChapterRow(title, page, opts) {
+      const row = document.createElement("div");
+      row.className = "chapter-row";
+
+      const handle = document.createElement("span");
+      handle.className = "drag-handle";
+      handle.textContent = "⋮⋮";
+      handle.draggable = true;
+
+      const titleInput = document.createElement("input");
+      titleInput.type = "text";
+      titleInput.className = "chapter-title";
+      titleInput.value = title || "";
+      titleInput.placeholder = "Title";
+
+      const pageInput = document.createElement("input");
+      pageInput.type = "text";
+      pageInput.inputMode = "text";
+      pageInput.className = "chapter-page";
+      pageInput.value = page || "";
+      pageInput.placeholder = "Pg";
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "danger";
+      deleteBtn.style.padding = "6px 10px";
+      deleteBtn.textContent = "✕";
+
+      const validationMsg = document.createElement("div");
+      validationMsg.className = "validation-msg";
+
+      row.appendChild(handle);
+      row.appendChild(titleInput);
+      row.appendChild(pageInput);
+      row.appendChild(deleteBtn);
+      row.appendChild(validationMsg);
+
+      El.chapterList.appendChild(row);
+
+      function syncToState(saveHist) {
+        const rows = Array.from(El.chapterList.querySelectorAll(".chapter-row"));
+        AppState.toc.chapters = rows.map(r => ({
+          title: r.querySelector(".chapter-title").value,
+          page: r.querySelector(".chapter-page").value
+        }));
+        if (saveHist) saveStateToHistory();
+      }
+
+      titleInput.addEventListener("change", () => {
+        if (!AppState.history.isUndoRedo && !AppState.history.isBulkEdit) syncToState(true);
+      });
+
+      pageInput.addEventListener("input", () => validateChapterRow(row));
+      pageInput.addEventListener("change", () => {
+        validateChapterRow(row);
+        if (!AppState.history.isUndoRedo && !AppState.history.isBulkEdit) syncToState(true);
+      });
+
+      deleteBtn.onclick = () => {
+        row.remove();
+        syncToState(true);
+      };
+
+      // drag reorder
+      handle.addEventListener("dragstart", (e) => {
+        row.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+      });
+      handle.addEventListener("dragend", () => {
+        row.classList.remove("dragging");
+        if (!AppState.history.isUndoRedo && !AppState.history.isBulkEdit) {
+          syncToState(true);
+        }
+      });
+      row.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        const dragging = document.querySelector(".dragging");
+        if (dragging && dragging !== row) {
+          const box = row.getBoundingClientRect();
+          const offset = e.clientY - box.top - box.height / 2;
+          if (offset < 0) row.parentNode.insertBefore(dragging, row);
+          else row.parentNode.insertBefore(dragging, row.nextSibling);
+        }
+      });
+
+      if (!opts || opts.saveHistory !== false) syncToState(true);
+      validateChapterRow(row);
+    }
+
+    function addChapter() {
+      addChapterRow("", "", { saveHistory: true });
+      const rows = El.chapterList.querySelectorAll(".chapter-row");
+      const last = rows[rows.length - 1];
+      if (last) last.querySelector(".chapter-title").focus();
+    }
+
+    function validateChapterRow(row) {
+      if (!AppState.pdf.pageCount) return true;
+
+      const pageInput = row.querySelector(".chapter-page");
+      const token = String(pageInput.value || "").trim();
+      const msgEl = row.querySelector(".validation-msg");
+
+      if (!token) {
+        row.classList.remove("invalid");
+        if (msgEl) msgEl.textContent = "";
+        return true;
+      }
+
+      const idx = pageTokenToPdfIndex(token);
+      if (idx === null) {
+        row.classList.add("invalid");
+        if (msgEl) msgEl.textContent = "Cannot map \"" + token + "\" to a PDF page.";
+        return false;
+      }
+
+      row.classList.remove("invalid");
+      if (msgEl) msgEl.textContent = "";
+      return true;
+    }
+
+    function validateAllChapters() {
+      let invalid = 0;
+      const rows = El.chapterList.querySelectorAll(".chapter-row");
+      rows.forEach(r => { if (!validateChapterRow(r)) invalid++; });
+      return invalid;
+    }
+
+    function getPageFromRow(row) {
+      const token = String(row.querySelector(".chapter-page").value || "").trim();
+      const idx = pageTokenToPdfIndex(token);
+      return idx === null ? 999999 : idx;
+    }
+
+    function sortChaptersByPage() {
+      const rows = Array.from(El.chapterList.children);
+      rows.sort((a, b) => getPageFromRow(a) - getPageFromRow(b));
+      El.chapterList.innerHTML = "";
+      rows.forEach(r => El.chapterList.appendChild(r));
+      // sync + history
+      const chapters = rows.map(r => ({
+        title: r.querySelector(".chapter-title").value,
+        page: r.querySelector(".chapter-page").value
+      }));
+      setChapters(chapters, { saveHistory: true });
+    }
+
+    /**********************************************************************
+     * 10) Raw ToC debug helpers
+     **********************************************************************/
+    function setRawToc(text) {
+      El.rawToc.value = normalizeNewlines(text || "");
+    }
+
+    function copyRawToc() {
+      const txt = El.rawToc.value || "";
+      navigator.clipboard.writeText(txt).catch(() => alert("Copy failed. Browser blocked clipboard access."));
+    }
+
+    function downloadRawToc() {
+      const txt = El.rawToc.value || "";
+      const blob = new Blob([txt], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "toc_raw.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    /**********************************************************************
+     * 11) Offset detection and ToC range detection (automation)
+     **********************************************************************/
+    async function getHeaderFooterNumberCandidates(pageNum) {
+      const page = await AppState.pdf.doc.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const viewport = page.getViewport({ scale: 1 });
+      const h = viewport.height;
+
+      const isHeader = (y) => y > h * 0.85;
+      const isFooter = (y) => y < h * 0.15;
+
+      return (textContent.items || [])
+        .filter(item => item && item.transform && typeof item.str === "string")
+        .map(item => {
+          const y = item.transform[5];
+          const str = item.str.trim().replace(/^[-[\]\s]+|[-[\]\s]+$/g, "");
+          return { y, str };
+        })
+        .filter(o => (isHeader(o.y) || isFooter(o.y)) && /^\d+$/.test(o.str))
+        .map(o => ({ val: parseInt(o.str, 10), y: o.y }));
+    }
+
+    function containsTocKeyword(rawText) {
+      return /(table of contents|contents|índice|indice|contenido|sommaire|inhalt|capitoli|sommario|tavola|agenda)\b/i
+        .test(rawText || "");
+    }
+
+    function containsDotLeaders(rawText) {
+      return /(\.{4,}|(\.\s){6,})/.test(rawText || "");
+    }
+
+    function isListLikeByLineEndings(lines) {
+      const clean = (lines || []).map(l => l.trim()).filter(Boolean);
+      if (clean.length < 6) return false;
+      const endsWithPage = clean.filter(l => /(\d+|[ivxlcdm]+)\.?$/i.test(l)).length;
+      return endsWithPage >= 4 && (endsWithPage / clean.length) >= 0.35;
+    }
+
+    async function scoreTocPage(pageNum) {
+      const { items } = await PdfService.getTextItemsWithViewport(pageNum, 1);
+      const text = items.map(i => i.str).join("\n");
+      const raw = String(text || "");
+      const lines = raw.split("\n").map(s => stripNoise(s)).filter(Boolean);
+
+      const entryish = lines.filter(l => /(\d+|[ivxlcdm]+)\s*$/.test(l)).length;
+      let score = entryish;
+      if (containsTocKeyword(raw)) score += 6;
+      if (containsDotLeaders(raw)) score += 2;
+      if (isListLikeByLineEndings(lines)) score += 2;
+
+      return { pageNum, score, entryish, hasKeyword: containsTocKeyword(raw) };
+    }
+
+    function stripNoise(s) {
+      return String(s || "").replace(/\.{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
+    }
+
+    async function autoFindTocRange(scanStart, scanEnd) {
+      const scores = [];
+      for (let p = scanStart; p <= scanEnd; p++) scores.push(await scoreTocPage(p));
+
+      let best = scores[0] || null;
+      for (const s of scores) if (!best || s.score > best.score) best = s;
+      if (!best) return null;
+
+      const minOk = (best.entryish >= 5) || (best.hasKeyword && best.score >= 6);
+      if (!minOk) return null;
+
+      const cutoff = Math.max(3, Math.floor(best.score * 0.55));
+      let start = best.pageNum;
+      let end = best.pageNum;
+      const byPage = new Map(scores.map(s => [s.pageNum, s]));
+
+      while (start > scanStart) {
+        const prev = byPage.get(start - 1);
+        if (!prev) break;
+        if (prev.score >= cutoff) start -= 1;
+        else break;
+      }
+      while (end < scanEnd) {
+        const nxt = byPage.get(end + 1);
+        if (!nxt) break;
+        if (nxt.score >= cutoff) end += 1;
+        else break;
+      }
+
+      return { start, end, best };
+    }
+
+    async function autoDetectStructure() {
+      if (!AppState.pdf.doc) return;
+
+      const statusEl = El.fileInfo;
+      const original = (statusEl.textContent || "").split(" | ")[0];
+      statusEl.textContent = original + " | 🔍 Scanning...";
+      statusEl.style.backgroundColor = "";
+
+      try {
+        const total = AppState.pdf.pageCount;
+        const maxScan = Math.min(50, total);
+
+        // 1) Offset detection via 3 page sequence in header/footer
+        let detectedOffset = null;
+
+        for (let i = 1; i <= maxScan - 2; i++) {
+          const a = await getHeaderFooterNumberCandidates(i);
+          const b = await getHeaderFooterNumberCandidates(i + 1);
+          const c = await getHeaderFooterNumberCandidates(i + 2);
+
+          for (const aa of a) {
+            const bb = b.find(x => x.val === aa.val + 1 && Math.abs(x.y - aa.y) < 60);
+            if (!bb) continue;
+            const cc = c.find(x => x.val === bb.val + 1 && Math.abs(x.y - bb.y) < 60);
+            if (!cc) continue;
+
+            detectedOffset = i - (aa.val - 1);
+            if (detectedOffset < 1) detectedOffset = 1;
+            break;
+          }
+          if (detectedOffset) break;
+        }
+
+        // 1b) Offset fallback from PageLabels
+        if (!detectedOffset && AppState.pdf.pageLabels && AppState.pdf.pageLabels.length) {
+          const idx = AppState.pdf.pageLabels.findIndex(l => /^\d+$/.test(String(l || "").trim()));
+          if (idx !== -1) {
+            const n = parseInt(AppState.pdf.pageLabels[idx], 10);
+            detectedOffset = (idx + 1) - (n - 1);
+            if (detectedOffset < 1) detectedOffset = 1;
+          }
+        }
+
+        // 2) ToC range detection
+        let tocStart = null;
+        let tocEnd = null;
+        const preferredEnd = detectedOffset ? Math.min(maxScan, detectedOffset + 2) : Math.min(maxScan, 20);
+
+        let tocRange = await autoFindTocRange(1, preferredEnd);
+        if (!tocRange) tocRange = await autoFindTocRange(1, maxScan);
+
+        if (tocRange) {
+          tocStart = tocRange.start;
+          tocEnd = tocRange.end;
+        }
+
+        // Apply
+        const parts = [];
+        if (detectedOffset) {
+          El.pageOffset.value = detectedOffset;
+          parts.push("Offset pg " + detectedOffset);
+        } else {
+          parts.push("Offset ?");
+        }
+
+        if (tocStart) {
+          El.tocStart.value = tocStart;
+          El.tocEnd.value = tocEnd || tocStart;
+          parts.push("ToC pg " + tocStart + "-" + (tocEnd || tocStart));
+          await PdfService.renderPreview(tocStart);
+        } else {
+          parts.push("ToC ?");
+        }
+
+        updatePageRangeHint();
+        validateAllChapters();
+        updateFrontMatterDisplay();
+
+        statusEl.textContent = original + " | " + parts.join(", ");
+        statusEl.style.backgroundColor = "#d1fae5";
+        setTimeout(() => statusEl.style.backgroundColor = "", 2000);
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = original + " | Auto-detect error";
+        statusEl.style.backgroundColor = "#fee2e2";
+        setTimeout(() => statusEl.style.backgroundColor = "", 2000);
+      }
+    }
+
+    /**********************************************************************
+     * 12) ToC extraction pipeline: geometry first, OCR fallback
+     **********************************************************************/
+    function showExtractStatus(kind, msg) {
+      El.extractStatus.classList.remove("hidden");
+      El.extractStatus.className = "status-box " + kind;
+      El.extractStatus.textContent = msg;
+    }
+
+    function updateDetectedMaxRoman(entries) {
+      AppState.toc.detectedMaxRoman = TocService.detectMaxRoman(entries);
+    }
+
+    function updateMainContentStart(entries) {
+      const start = TocService.findMainContentStartFromEntries(entries);
+      AppState.toc.mainContentStartPdfPage = start;
+      updateFrontMatterDisplay();
+    }
+
+    function parseEntriesToChapters(entries) {
+      const skipSubs = !!El.filterSubchapters.checked;
+      const out = [];
+      for (const e of (entries || [])) {
+        if (!e || !e.title || !e.page) continue;
+        if (skipSubs && looksLikeSubchapter(e.title)) continue;
+        out.push({ title: e.title, page: e.page });
+      }
+      return out;
+    }
+
+    async function extractUsingGeometry() {
+      if (!AppState.pdf.doc) return alert("Load a PDF first.");
+
+      const startPage = safeParseInt(El.tocStart.value) || 1;
+      const endPage = safeParseInt(El.tocEnd.value) || startPage;
+
+      if (startPage < 1 || endPage > AppState.pdf.pageCount || startPage > endPage) {
+        showExtractStatus("error", "Invalid ToC page range.");
+        return;
+      }
+
+      try {
+        showExtractStatus("processing", "Extracting with geometry...");
+        const res = await TocService.extractFromPdfRange(startPage, endPage, (m) => showExtractStatus("processing", m));
+        setRawToc(res.rawText);
+
+        const entries = res.entries || [];
+        updateDetectedMaxRoman(entries);
+        updateMainContentStart(entries);
+
+        const chapters = parseEntriesToChapters(entries);
+
+        if (chapters.length) {
+          setChapters(chapters, { saveHistory: true });
+          showExtractStatus("success", "Found " + chapters.length + " entries using geometry.");
+          validateAllChapters();
+          return true;
+        }
+
+        showExtractStatus("warning", "Geometry extraction found no usable entries.");
+        return false;
+      } catch (e) {
+        console.error(e);
+        showExtractStatus("error", "Geometry extraction error: " + e.message);
+        return false;
+      }
+    }
+
+    async function extractUsingOcrFromPdf() {
+      if (!AppState.pdf.doc) return alert("Load a PDF first.");
+
+      const startPage = safeParseInt(El.tocStart.value) || 1;
+      const endPage = safeParseInt(El.tocEnd.value) || startPage;
+
+      if (startPage < 1 || endPage > AppState.pdf.pageCount || startPage > endPage) {
+        showExtractStatus("error", "Invalid ToC page range.");
+        return;
+      }
+
+      try {
+        showExtractStatus("processing", "Starting OCR...");
+        const text = await OcrService.ocrPdfRange(
+          startPage,
+          endPage,
+          {
+            langs: El.ocrLang.value,
+            psm: El.ocrPsm.value,
+            dpi: El.ocrDpi.value,
+            preprocess: El.ocrPreprocess.value
+          },
+          (m) => showExtractStatus("processing", m)
+        );
+
+        // Normalize OCR output lightly
+        const raw = normalizeNewlines(text || "");
+        const lines = raw.split("\n").map(l => repairTrailingPageNumber(stripNoise(l))).filter(Boolean);
+        const cleaned = lines.join("\n");
+        setRawToc(cleaned);
+
+        // Parse OCR text with a tolerant line parser (page last or page first heuristics)
+        const entries = parseTocTextFallback(cleaned);
+        updateDetectedMaxRoman(entries);
+        updateMainContentStart(entries);
+
+        const chapters = parseEntriesToChapters(entries);
+        if (chapters.length) {
+          setChapters(chapters, { saveHistory: true });
+          showExtractStatus("success", "Found " + chapters.length + " entries via OCR.");
+          validateAllChapters();
+          return true;
+        }
+
+        showExtractStatus("warning", "OCR completed but parsing produced no entries. Try different PSM or DPI.");
+        return false;
+      } catch (e) {
+        console.error(e);
+        showExtractStatus("error", "OCR error: " + e.message);
+        return false;
+      }
+    }
+
+    async function autoParseToc() {
+      // 1) Try geometry extraction
+      const okGeo = await extractUsingGeometry();
+      if (okGeo) return true;
+
+      // 2) Optional OCR fallback
+      const wantOcr = !!El.autoOcrFallback.checked;
+      if (!wantOcr) return false;
+
+      return await extractUsingOcrFromPdf();
+    }
+
+    /**********************************************************************
+     * 13) OCR text fallback parser (no geometry)
+     **********************************************************************/
+    function detectTocFormatText(lines) {
+      let pageFirstCount = 0;
+      let pageLastCount = 0;
+      const sample = lines.slice(0, 60);
+
+      for (const line of sample) {
+        const l = line.trim();
+        if (/^(\d+|[ivxlcdm]+)\s+\p{L}/iu.test(l)) pageFirstCount++;
+        if (/\p{L}.*\s+(\d+|[ivxlcdm]+)$/iu.test(l)) pageLastCount++;
+      }
+      return pageFirstCount > pageLastCount ? "page-first" : "page-last";
+    }
+
+    function cleanTitle(t) {
+      return String(t || "")
+        .replace(/[._\-]+$/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+    }
+
+    function parsePageFirstFormatText(lines) {
+      const out = [];
+      const re = /^(\d+|[ivxlcdm]+)\s+(.+)$/i;
+      for (const line of lines) {
+        const m = line.match(re);
+        if (!m) continue;
+        const page = normalizePageToken(m[1]);
+        const title = cleanTitle(m[2]);
+        if (page && title) out.push({ title, page });
+      }
+      return out;
+    }
+
+    function parsePageLastFormatText(lines) {
+      const out = [];
+      let buffer = "";
+      let prefixA = "";
+      let prefixB = "";
+
+      const chapterMarkerPattern = /^(chapter|capítulo|capitulo|chapitre|kapitel|capitolo|parte|part|teil|section|sección|seccion)\s*(\d+)\.?$/i;
+      const sectionHeaderPattern = /^(introducción|introduction|conclusión|conclusion|apéndices|appendices|prefacio|preface|foreword|prologue)$/i;
+
+      for (const line of lines) {
+        const s = line.trim();
+
+        if (sectionHeaderPattern.test(s)) {
+          prefixA = s.replace(/\.?$/, "");
+          continue;
+        }
+        if (chapterMarkerPattern.test(s)) {
+          prefixB = s.replace(/\.?$/, "");
+          continue;
+        }
+
+        // standalone page token
+        if (/^(\d+|[ivxlcdm]+)\.?$/i.test(s)) {
+          if (buffer || prefixA || prefixB) {
+            const page = normalizePageToken(s);
+            let title = buffer || "";
+            if (prefixB) title = prefixB + (title ? ": " + title : "");
+            if (prefixA) title = prefixA + (title ? ": " + title : "");
+            out.push({ title: cleanTitle(title), page });
+            buffer = "";
+            prefixA = "";
+            prefixB = "";
+          }
+          continue;
+        }
+
+        // inline: title ... page
+        const m = s.match(/^(.+?)\s+(\d+|[ivxlcdm]+)$/i);
+        if (m) {
+          const t = cleanTitle(m[1]);
+          const page = normalizePageToken(m[2]);
+          const combined = buffer ? (buffer + " " + t) : t;
+          let title = combined;
+          if (prefixB) title = prefixB + ": " + title;
+          if (prefixA) title = prefixA + ": " + title;
+          out.push({ title: cleanTitle(title), page });
+          buffer = "";
+          prefixA = "";
+          prefixB = "";
+          continue;
+        }
+
+        buffer = buffer ? (buffer + " " + s) : s;
+      }
+
+      return out;
+    }
+
+    function parseTocTextFallback(text) {
+      const lines = normalizeNewlines(text || "")
+        .split("\n")
+        .map(l => stripNoise(l))
+        .filter(Boolean);
+
+      const fmt = detectTocFormatText(lines);
+      if (fmt === "page-first") return parsePageFirstFormatText(lines);
+      return parsePageLastFormatText(lines);
+    }
+
+    /**********************************************************************
+     * 14) Front matter display
+     **********************************************************************/
+    function updateFrontMatterDisplay() {
+      const offset = safeParseInt(El.pageOffset.value) || 1;
+      const row = El.frontMatterRow;
+      if (!row) return;
+
+      if (offset <= 1) {
+        row.classList.add("hidden");
+        return;
+      }
+
+      row.classList.remove("hidden");
+      const endPage = offset - 1;
+      let txt = "PDF pages 1-" + endPage;
+
+      if (AppState.toc.mainContentStartPdfPage && AppState.toc.mainContentStartPdfPage < offset) {
+        txt += ". Main content start at PDF pg " + AppState.toc.mainContentStartPdfPage + ".";
+      }
+
+      El.frontMatterPages.textContent = txt;
+    }
+
+    El.pageOffset.addEventListener("change", () => {
+      validateAllChapters();
+      updateFrontMatterDisplay();
+    });
+
+    /**********************************************************************
+     * 15) Preview helpers
+     **********************************************************************/
+    function previewPage(delta) {
+      const newPage = AppState.ui.currentPreviewPage + delta;
+      if (newPage >= 1 && newPage <= AppState.pdf.pageCount) PdfService.renderPreview(newPage);
+    }
+
+    function openPreviewFullSize() {
+      const dataUrl = El.previewCanvas.toDataURL("image/png");
+      const newTab = window.open();
+      if (!newTab) return;
+      newTab.document.write(
+        "<html><head><title>Page " + AppState.ui.currentPreviewPage + " Preview</title></head>" +
+        "<body style=\"margin:0; display:flex; justify-content:center; background:#333;\">" +
+        "<img src=\"" + dataUrl + "\" style=\"max-width:100%; height:auto;\">" +
+        "</body></html>"
+      );
+      newTab.document.close();
+    }
+
+    function savePreviewImage() {
+      const dataUrl = El.previewCanvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = "page_" + AppState.ui.currentPreviewPage + ".png";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    El.previewCanvas.addEventListener("click", openPreviewFullSize);
+
+    /**********************************************************************
+     * 16) Page range hint
+     **********************************************************************/
+    function updatePageRangeHint() {
+      const start = safeParseInt(El.tocStart.value) || 1;
+      const end = safeParseInt(El.tocEnd.value) || 1;
+      if (start === end) {
+        El.pageRangeHint.textContent = "(1 page)";
+        El.pageRangeHint.style.color = "#666";
+      } else if (end > start) {
+        El.pageRangeHint.textContent = "(" + (end - start + 1) + " pages)";
+        El.pageRangeHint.style.color = "#666";
+      } else {
+        El.pageRangeHint.textContent = "(invalid range)";
+        El.pageRangeHint.style.color = "#dc2626";
+      }
+    }
+
+    El.tocStart.addEventListener("input", updatePageRangeHint);
+    El.tocEnd.addEventListener("input", updatePageRangeHint);
+
+    function setTocToCurrentPage() {
+      const start = safeParseInt(El.tocStart.value) || 0;
+      const cur = AppState.ui.currentPreviewPage;
+      if (start === 0 || cur < start) {
+        El.tocStart.value = cur;
+        El.tocEnd.value = cur;
+      } else {
+        El.tocEnd.value = cur;
+      }
+      updatePageRangeHint();
+    }
+
+    /**********************************************************************
+     * 17) PDF generation (bookmarks + page labels)
+     **********************************************************************/
+    async function processPdf() {
+      if (!AppState.pdf.bytes) return alert("No PDF loaded");
+
+      const invalid = validateAllChapters();
+      if (invalid > 0) {
+        if (!confirm("Some chapters have invalid page tokens. Continue anyway?")) return;
+      }
+
+      // Offer sort if unsorted
+      const rows = Array.from(El.chapterList.querySelectorAll(".chapter-row"));
+      let last = -Infinity;
+      let unsorted = false;
+      for (const r of rows) {
+        const idx = getPageFromRow(r);
+        if (idx === 999999) continue;
+        if (idx < last) { unsorted = true; break; }
+        last = idx;
+      }
+      if (unsorted) {
+        const shouldSort = confirm("Chapters are not in page order. Sort them now before generating?");
+        if (shouldSort) sortChaptersByPage();
+      }
+
+      El.processBtn.disabled = true;
+      El.status.classList.remove("hidden");
+      El.status.className = "status-box processing";
+      El.status.textContent = "Generating PDF...";
+
+      try {
+        const { PDFDocument, PDFName, PDFNumber, PDFString } = PDFLib;
+        const doc = await PDFDocument.load(AppState.pdf.bytes);
+        const context = doc.context;
+
+        const pageOffset = safeParseInt(El.pageOffset.value) || 1;
+
+        const outlineItems = [];
+        const skipped = [];
+
+        if (pageOffset > 1) {
+          outlineItems.push({ title: "Front Matter", pageIndex: 0 });
+        }
+
+        for (const ch of (AppState.toc.chapters || [])) {
+          const title = String(ch.title || "").trim();
+          const pageVal = String(ch.page || "").trim();
+          if (!title || !pageVal) continue;
+
+          const pdfIndex = pageTokenToPdfIndex(pageVal);
+          if (pdfIndex === null) {
+            skipped.push({ title, pageVal, reason: "Cannot map page token to PDF page" });
+            continue;
+          }
+          outlineItems.push({ title, pageIndex: pdfIndex });
+        }
+
+        if (outlineItems.length) {
+          const refs = [];
           for (const item of outlineItems) {
-            const pageRef = doc.getPages()[item.pageIdx].ref;
+            const pageRef = doc.getPages()[item.pageIndex].ref;
             const dict = context.obj({
               Title: PDFString.of(item.title),
               Dest: context.obj([pageRef, PDFName.of("XYZ"), null, null, null]),
@@ -746,86 +2242,142 @@
           });
           const outlineRef = context.register(outlineDict);
 
-          // Link List
           for (let i = 0; i < refs.length; i++) {
             const item = context.lookup(refs[i]);
             item.set(PDFName.of("Parent"), outlineRef);
             if (i > 0) item.set(PDFName.of("Prev"), refs[i - 1]);
             if (i < refs.length - 1) item.set(PDFName.of("Next"), refs[i + 1]);
           }
+
           doc.catalog.set(PDFName.of("Outlines"), outlineRef);
           doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
-
-          // 2. Set Page Labels (Roman for front, Arabic for content)
-          const nums = [];
-          nums.push(PDFNumber.of(0)); // Start at 0
-          if (offset > 1) {
-            // Front matter: Roman lowercase
-            nums.push(context.obj({ S: PDFName.of("r"), St: PDFNumber.of(1) }));
-            // Main content: Arabic, starting at offset
-            nums.push(PDFNumber.of(offset - 1));
-            nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
-          } else {
-            nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
-          }
-          const labelsDict = context.obj({ Nums: nums });
-          doc.catalog.set(PDFName.of("PageLabels"), context.register(labelsDict));
-
-          // 3. Save & Download
-          const pdfBytes = await doc.save();
-          const blob = new Blob([pdfBytes], { type: "application/pdf" });
-          const url = URL.createObjectURL(blob);
-          
-          let fname = document.getElementById('output-filename').value || "output.pdf";
-          if (!fname.endsWith('.pdf')) fname += '.pdf';
-          
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = fname;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          
-          UI.setStatus('gen-status', 'Done! Download started.', 'success');
-        } catch (e) {
-          console.error(e);
-          UI.setStatus('gen-status', 'Error: ' + e.message, 'error');
         }
-      }
-    };
 
-    /**
-     * EVENT LISTENERS
-     */
-    document.getElementById('pdf-file').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const buf = await file.arrayBuffer();
-        PdfService.loadFromBytes(buf, file.name);
-      }
-    });
+        // Page labels: roman for front matter, then Arabic starting at 1
+        const nums = [];
+        nums.push(PDFNumber.of(0));
 
-    document.getElementById('load-url-btn').addEventListener('click', async () => {
-      const url = document.getElementById('pdf-url').value;
-      if (!url) return alert("Enter a URL");
-      
-      const btn = document.getElementById('load-url-btn');
-      btn.textContent = "Loading...";
-      btn.disabled = true;
-      
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
-        const name = url.split('/').pop() || "download.pdf";
-        PdfService.loadFromBytes(buf, name);
+        if (pageOffset > 1) {
+          nums.push(context.obj({ S: PDFName.of("r"), St: PDFNumber.of(1) }));
+          nums.push(PDFNumber.of(pageOffset - 1));
+          nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
+        } else {
+          nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
+        }
+
+        const labelsDict = context.obj({ Nums: nums });
+        doc.catalog.set(PDFName.of("PageLabels"), context.register(labelsDict));
+
+        const data = await doc.save();
+        const blob = new Blob([data], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+
+        let outputFilename = String(El.outputFilename.value || "").trim();
+        if (!outputFilename) outputFilename = "processed_document.pdf";
+        if (!outputFilename.toLowerCase().endsWith(".pdf")) outputFilename += ".pdf";
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = outputFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        const chapterCount = outlineItems.length - (pageOffset > 1 ? 1 : 0);
+        if (skipped.length) {
+          El.status.className = "status-box warning";
+          El.status.textContent = "PDF generated with " + outlineItems.length + " bookmarks (" + chapterCount + " chapters). " +
+            skipped.length + " skipped due to invalid page mapping.";
+        } else {
+          El.status.className = "status-box success";
+          El.status.textContent = "PDF generated with " + outlineItems.length + " bookmarks (" + chapterCount + " chapters).";
+        }
       } catch (e) {
-        alert("Could not load URL. Note: This only works if the server allows CORS (Cross-Origin). For Dropbox/Drive, download the file first.");
+        console.error(e);
+        El.status.className = "status-box error";
+        El.status.textContent = "Error: " + e.message;
       } finally {
-        btn.textContent = "Load URL";
-        btn.disabled = false;
+        El.processBtn.disabled = false;
+      }
+    }
+
+    /**********************************************************************
+     * 18) Wire up UI events
+     **********************************************************************/
+    El.pdfFile.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        const bytes = await file.arrayBuffer();
+        await PdfService.loadFromBytes(bytes, file.name);
+        await autoDetectStructure();
+      } catch (err) {
+        alert("Error loading PDF: " + err.message);
       }
     });
+
+    El.loadUrlBtn.addEventListener("click", async () => {
+      El.urlError.classList.add("hidden");
+      El.loadUrlBtn.disabled = true;
+      El.loadUrlBtn.textContent = "Loading...";
+      try {
+        await PdfService.loadFromDropboxUrl(El.pdfUrl.value);
+        El.pdfUrl.value = "";
+        await autoDetectStructure();
+      } catch (e) {
+        El.urlError.textContent = "Error loading PDF: " + e.message;
+        El.urlError.classList.remove("hidden");
+      } finally {
+        El.loadUrlBtn.disabled = false;
+        El.loadUrlBtn.textContent = "Load";
+      }
+    });
+
+    El.pdfUrl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); El.loadUrlBtn.click(); }
+    });
+
+    El.autoDetectBtn.addEventListener("click", autoDetectStructure);
+
+    El.autoParseBtn.addEventListener("click", async () => {
+      await autoParseToc();
+    });
+
+    El.autoRunBtn.addEventListener("click", async () => {
+      await autoDetectStructure();
+      await autoParseToc();
+    });
+
+    El.resetChaptersBtn.addEventListener("click", () => {
+      resetChaptersAndHistory();
+      setChapters([{ title: "", page: "" }], { saveHistory: true });
+    });
+
+    El.prevPageBtn.addEventListener("click", () => previewPage(-1));
+    El.nextPageBtn.addEventListener("click", () => previewPage(1));
+    El.previewScale.addEventListener("change", () => PdfService.renderPreview(AppState.ui.currentPreviewPage));
+    El.savePreviewBtn.addEventListener("click", savePreviewImage);
+
+    El.setTocCurrentBtn.addEventListener("click", setTocToCurrentPage);
+
+    El.extractGeoBtn.addEventListener("click", extractUsingGeometry);
+    El.extractOcrBtn.addEventListener("click", extractUsingOcrFromPdf);
+
+    El.copyRawBtn.addEventListener("click", copyRawToc);
+    El.downloadRawBtn.addEventListener("click", downloadRawToc);
+
+    El.undoBtn.addEventListener("click", undo);
+    El.redoBtn.addEventListener("click", redo);
+    El.sortBtn.addEventListener("click", sortChaptersByPage);
+    El.validateBtn.addEventListener("click", validateAllChapters);
+    El.addChapterBtn.addEventListener("click", addChapter);
+
+    El.processBtn.addEventListener("click", processPdf);
+
+    // Initial hint
+    updatePageRangeHint();
+    updateHistoryButtons();
   </script>
 </body>
 </html>
