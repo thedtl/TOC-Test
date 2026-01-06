@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF ToC Tool (Upgraded v2)</title>
+  <title>PDF ToC Tool (Upgraded v2.1)</title>
 
   <!-- Version pinning -->
   <script>
@@ -243,7 +243,7 @@
 </head>
 
 <body>
-  <h1>📚 PDF ToC Tool (Upgraded v2)</h1>
+  <h1>📚 PDF ToC Tool (Upgraded v2.1)</h1>
 
   <!-- Step 1: Upload -->
   <div class="card">
@@ -364,7 +364,7 @@
 
       <div class="flex-row">
         <button id="set-toc-current-btn" class="secondary" style="padding: 8px 12px;">Set to current page</button>
-        <button id="extract-geo-btn" class="success" style="padding: 8px 16px;">Extract using geometry (fast)</button>
+        <button id="extract-text-btn" class="success" style="padding: 8px 16px;">Extract from embedded text (fast)</button>
         <button id="extract-ocr-btn" class="success" style="padding: 8px 16px;">OCR ToC pages from PDF (best for scans)</button>
       </div>
 
@@ -576,7 +576,7 @@
       setTocCurrentBtn: $("set-toc-current-btn"),
       pageRangeHint: $("page-range-hint"),
 
-      extractGeoBtn: $("extract-geo-btn"),
+      extractTextBtn: $("extract-text-btn"),
       extractOcrBtn: $("extract-ocr-btn"),
       extractStatus: $("extract-status"),
 
@@ -675,6 +675,14 @@
       if (!p) return t;
       if (!t) return p;
       return p + ": " + t;
+    }
+
+    function stripNoise(s) {
+      return String(s || "")
+        .replace(/(?:\s*[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]\s*){4,}/gu, " ")
+        .replace(/[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]{2,}/gu, " ")
+        .replace(/\s{2,}/g, " ")
+        .trim();
     }
 
     const MAIN_CONTENT_HEADINGS = new Set([
@@ -974,25 +982,9 @@
     }
 
     /**********************************************************************
-     * 7) Geometry based ToC extraction and parsing
+     * 7) Text extraction and parsing (Updated v2.1)
      **********************************************************************/
     const TocService = (function(){
-      function isPageTokenStr(s) {
-        const t = normalizePageToken(s);
-        if (!t) return false;
-        if (/^\d+$/.test(t)) return true;
-        if (isRomanNumeralToken(t)) return true;
-        return false;
-      }
-
-      function stripLeaderNoise(s) {
-        return String(s || "")
-          .replace(/(?:\s*[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]\s*){4,}/gu, " ")
-          .replace(/[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]{2,}/gu, " ")
-          .replace(/\s+/g, " ")
-          .trim();
-      }
-
       function groupItemsIntoLines(items) {
         const sorted = [...items].sort((a, b) => {
           const dy = a.y - b.y;
@@ -1084,157 +1076,77 @@
         return [lines];
       }
 
-      function pickPageTokenByGap(lineItems) {
+      function splitLineIntoSegmentsByBigGap(lineItems, viewport) {
+        const w = viewport.width || 1;
         const items = [...lineItems].sort((a, b) => a.x - b.x);
-        const candidates = items
-          .map((it, idx) => ({ it, idx, tok: normalizePageToken(it.str) }))
-          .filter(o => o.tok && (/^\d+$/.test(o.tok) || isRomanNumeralToken(o.tok)));
 
-        if (!candidates.length) return null;
+        if (items.length <= 1) return [{ items }];
 
-        // Prefer the rightmost candidate, but only if it is well separated
-        const rightmost = candidates.reduce((a, b) => (a.it.x > b.it.x ? a : b));
-        
-        // If it's the only item, it's the page token
-        if (items.length === 1) return rightmost;
+        // Big gap threshold: tuned for scale=1 viewport space
+        // 12% of page width usually separates columns; clamp so tiny pages do not break.
+        const bigGap = Math.max(60, w * 0.12);
 
-        const prev = items[rightmost.idx - 1];
-        if (!prev) return rightmost; 
+        const segments = [];
+        let seg = [items[0]];
 
-        const prevEnd = (prev.x + (prev.w || 0));
-        const gap = rightmost.it.x - prevEnd;
+        for (let i = 1; i < items.length; i++) {
+          const prev = seg[seg.length - 1];
+          const prevEnd = (prev.x || 0) + (prev.w || 0);
+          const gap = (items[i].x || 0) - prevEnd;
 
-        // Threshold: 3% of page width or ~15px
-        const lineStart = items[0].x;
-        const lineEnd = items[items.length-1].x + items[items.length-1].w;
-        const lineW = lineEnd - lineStart;
-        
-        if (gap > 15 || gap > (lineW * 0.05)) {
-            return rightmost;
+          if (gap > bigGap) {
+            segments.push({ items: seg });
+            seg = [items[i]];
+          } else {
+            seg.push(items[i]);
+          }
         }
 
-        return null;
+        if (seg.length) segments.push({ items: seg });
+        return segments;
       }
 
-      function extractEntriesFromLines(lines) {
-        const entries = [];
-        let bufferedTitle = "";
-        let bufferedPrefix = "";
-
-        const chapterMarkerPattern = /^(chapter|capítulo|capitulo|chapitre|kapitel|capitolo|parte|part|teil|section|sección|seccion)\s*(\d+)\.?$/i;
-        const sectionHeaderPattern = /^(introducción|introduction|conclusión|conclusion|apéndices|appendices|prefacio|preface|foreword|prologue)$/i;
-
-        function pushEntry(title, pageToken) {
-          const cleanTitle = stripLeaderNoise(title);
-          const page = normalizePageToken(pageToken);
-          if (!cleanTitle || !page) return;
-          entries.push({ title: cleanTitle, page });
-        }
-
-        for (const ln of lines) {
-          const text = assembleLineTextFromItems(ln.items);
-          const trimmed = stripLeaderNoise(text);
-
-          if (!trimmed) continue;
-
-          if (sectionHeaderPattern.test(trimmed)) {
-            bufferedPrefix = trimmed.replace(/\.?$/, "");
-            continue;
-          }
-          if (chapterMarkerPattern.test(trimmed)) {
-            bufferedTitle = trimmed.replace(/\.?$/, "");
-            continue;
-          }
-
-          const chosen = pickPageTokenByGap(ln.items);
-
-          if (!chosen) {
-             // No distinct page token found, treat as wrapped title
-             bufferedTitle = bufferedTitle ? (bufferedTitle + " " + trimmed) : trimmed;
-             continue;
-          }
-
-          // We have a page token.
-          // Is the line *only* the page token?
-          const isLineOnlyToken = (ln.items.length === 1) || (stripLeaderNoise(trimmed) === chosen.tok);
-
-          if (isLineOnlyToken) {
-             const t = joinPrefix(bufferedPrefix, bufferedTitle);
-             if (t) {
-                 pushEntry(t, chosen.tok);
-                 bufferedTitle = "";
-                 bufferedPrefix = "";
-             }
-             continue;
-          }
-
-          // Line has title + token
-          const filtered = ln.items.filter(it => it !== chosen.it);
-          let titleText = stripLeaderNoise(assembleLineTextFromItems(filtered));
-          
-          if (bufferedTitle) titleText = (bufferedTitle + " " + titleText).trim();
-          titleText = joinPrefix(bufferedPrefix, titleText);
-
-          bufferedTitle = "";
-          bufferedPrefix = "";
-
-          if (titleText && chosen.tok) pushEntry(titleText, chosen.tok);
-        }
-
-        return entries;
-      }
-
-      async function extractFromPdfRange(startPage, endPage, statusCb) {
-        const entries = [];
+      async function extractRawLinesFromPdfRange(startPage, endPage, statusCb) {
         const rawLines = [];
 
         for (let p = startPage; p <= endPage; p++) {
-          if (statusCb) statusCb("Extracting page " + p + " of " + endPage + "...");
-          const { items, viewport } = await PdfService.getTextItemsWithViewport(p, 1);
+          if (statusCb) statusCb("Extracting text from page " + p + " of " + endPage + "...");
 
+          const { items, viewport } = await PdfService.getTextItemsWithViewport(p, 1);
           if (!items.length) {
             rawLines.push("");
             continue;
           }
 
+          // Prefer hasEOL when available, but still segment split for columns.
           const hasAnyEol = items.some(it => it.hasEOL);
-          let lines;
+          let baseLines = [];
 
           if (hasAnyEol) {
-            const streamLines = [];
             let cur = [];
             for (const it of items) {
               cur.push(it);
               if (it.hasEOL) {
-                cur.sort((a, b) => a.x - b.x);
-                streamLines.push({ items: cur });
+                baseLines.push({ items: cur });
                 cur = [];
               }
             }
-            if (cur.length) {
-              cur.sort((a, b) => a.x - b.x);
-              streamLines.push({ items: cur });
-            }
-            lines = streamLines;
+            if (cur.length) baseLines.push({ items: cur });
           } else {
-            lines = groupItemsIntoLines(items);
+            baseLines = groupItemsIntoLines(items);
           }
 
-          const columns = splitColumns(lines, viewport);
-
-          for (const col of columns) {
-            const pageEntries = extractEntriesFromLines(col);
-            entries.push(...pageEntries);
+          for (const ln of baseLines) {
+            const segments = splitLineIntoSegmentsByBigGap(ln.items, viewport);
+            for (const seg of segments) {
+              rawLines.push(stripNoise(assembleLineTextFromItems(seg.items)));
+            }
           }
 
-          for (const ln of lines) rawLines.push(assembleLineTextFromItems(ln.items));
           rawLines.push("");
         }
 
-        return {
-          entries,
-          rawText: rawLines.join("\n").trim()
-        };
+        return rawLines.join("\n").trim();
       }
 
       function detectMaxRoman(entries) {
@@ -1263,7 +1175,7 @@
       }
 
       return {
-        extractFromPdfRange,
+        extractRawLinesFromPdfRange,
         detectMaxRoman,
         findMainContentStartFromEntries,
         groupItemsIntoLines,
@@ -1751,14 +1663,6 @@
       return /(\.{4,}|(\.\s){6,})/.test(rawText || "");
     }
 
-    function stripNoise(s) {
-      return String(s || "")
-        .replace(/(?:\s*[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]\s*){4,}/gu, " ")
-        .replace(/[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]{2,}/gu, " ")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-    }
-
     async function scoreTocPage(pageNum) {
       const { items, viewport } = await PdfService.getTextItemsWithViewport(pageNum, 1);
       
@@ -1978,7 +1882,7 @@
     }
 
     /**********************************************************************
-     * 12) ToC extraction pipeline: geometry first, OCR fallback
+     * 12) ToC extraction pipeline: Text extraction first, OCR fallback
      **********************************************************************/
     function showExtractStatus(kind, msg) {
       El.extractStatus.classList.remove("hidden");
@@ -2007,7 +1911,7 @@
       return out;
     }
 
-    async function extractUsingGeometry() {
+    async function extractUsingTextExtraction() {
       if (!AppState.pdf.doc) return alert("Load a PDF first.");
 
       const startPage = safeParseInt(El.tocStart.value) || 1;
@@ -2015,32 +1919,31 @@
 
       if (startPage < 1 || endPage > AppState.pdf.pageCount || startPage > endPage) {
         showExtractStatus("error", "Invalid ToC page range.");
-        return;
+        return false;
       }
 
       try {
-        showExtractStatus("processing", "Extracting with geometry...");
-        const res = await TocService.extractFromPdfRange(startPage, endPage, (m) => showExtractStatus("processing", m));
-        setRawToc(res.rawText);
+        showExtractStatus("processing", "Extracting embedded text...");
+        const rawText = await TocService.extractRawLinesFromPdfRange(startPage, endPage, (m) => showExtractStatus("processing", m));
+        setRawToc(rawText);
 
-        const entries = res.entries || [];
+        const entries = parseTocTextFallback(rawText);
         updateDetectedMaxRoman(entries);
         updateMainContentStart(entries);
 
         const chapters = parseEntriesToChapters(entries);
-
         if (chapters.length) {
           setChapters(chapters, { saveHistory: true });
-          showExtractStatus("success", "Found " + chapters.length + " entries using geometry.");
+          showExtractStatus("success", "Found " + chapters.length + " entries from embedded text.");
           validateAllChapters();
           return true;
         }
 
-        showExtractStatus("warning", "Geometry extraction found no usable entries.");
+        showExtractStatus("warning", "Embedded text extraction produced no entries.");
         return false;
       } catch (e) {
         console.error(e);
-        showExtractStatus("error", "Geometry extraction error: " + e.message);
+        showExtractStatus("error", "Embedded text extraction error: " + e.message);
         return false;
       }
     }
@@ -2112,9 +2015,9 @@
     }
 
     async function autoParseToc() {
-      // 1) Try geometry extraction
-      const okGeo = await extractUsingGeometry();
-      if (okGeo) return true;
+      // 1) Try text extraction (replaces geometry)
+      const okText = await extractUsingTextExtraction();
+      if (okText) return true;
 
       // 2) Optional OCR fallback
       const wantOcr = !!El.autoOcrFallback.checked;
@@ -2140,7 +2043,7 @@
     }
 
     /**********************************************************************
-     * 13) OCR text fallback parser (no geometry)
+     * 13) Text fallback parser (used for both Text Extraction and OCR)
      **********************************************************************/
     function parseTocTextFallback(rawText) {
       const lines = normalizeNewlines(rawText || "")
@@ -2545,7 +2448,7 @@
 
     El.setTocCurrentBtn.addEventListener("click", setTocToCurrentPage);
 
-    El.extractGeoBtn.addEventListener("click", extractUsingGeometry);
+    El.extractTextBtn.addEventListener("click", extractUsingTextExtraction);
     El.extractOcrBtn.addEventListener("click", () => extractUsingOcrFromPdf());
 
     El.copyRawBtn.addEventListener("click", copyRawToc);
