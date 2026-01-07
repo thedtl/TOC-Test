@@ -416,7 +416,8 @@
         pageOffset: 1,
         detectedMaxRoman: 0,
         mainContentStartPdfPage: null,
-        chapters: []
+        chapters: [],
+        confidence: 'none' // 'high', 'low', 'none'
       },
       ui: {
         currentPreviewPage: 1,
@@ -554,6 +555,37 @@
         .replace(/\s+/g, " ")
         .trim();
     }
+
+    // --- Multilingual Matcher Utilities (Fix for CJK) ---
+    function normAny(s) {
+      return String(s || "").normalize("NFKC").toLowerCase();
+    }
+
+    function normLatin(s) {
+      return foldText(s);
+    }
+
+    function makePhraseMatcher(phrases) {
+      const latinNeedles = [];
+      const anyNeedles = [];
+
+      for (const p of phrases) {
+        const latin = normLatin(p);
+        if (latin) latinNeedles.push(latin);
+        else anyNeedles.push(normAny(p)); // for CJK etc
+      }
+
+      return (haystackRaw) => {
+        const anyHay = normAny(haystackRaw);
+        const latinHay = normLatin(haystackRaw);
+
+        return (
+          latinNeedles.some(n => latinHay.includes(n)) ||
+          anyNeedles.some(n => anyHay.includes(n))
+        );
+      };
+    }
+    // ----------------------------------------------------
 
     function joinPrefix(prefix, title) {
       const p = String(prefix || "").trim();
@@ -1368,6 +1400,9 @@
           const result = await scheduler.addJob("recognize", canvas, {});
           const text = (result && result.data && result.data.text) ? result.data.text : "";
           fullText += text + "\n";
+          
+          // Yield to UI
+          await new Promise(r => setTimeout(r, 0));
         }
         return fullText;
       }
@@ -1609,16 +1644,10 @@
       "acknowledgements", "acknowledgments", "about the author"
     ];
 
-    function makePhrasePattern(phrases) {
-      const escaped = phrases
-        .map(s => foldText(s))
-        .map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-      return new RegExp("(?:^|\\b)(" + escaped.join("|") + ")(?:\\b|$)", "i");
-    }
-
-    const TOC_TITLE_PATTERN2 = makePhrasePattern(TOC_TITLE_PHRASES);
-    const TOC_COLHDR_PATTERN2 = makePhrasePattern(TOC_COLUMN_HEADER_PHRASES);
-    const NON_TOC_HDR_PATTERN2 = makePhrasePattern(NON_TOC_PAGE_HEADERS);
+    // Use the robust matcher instead of regex
+    const hasTocTitleText = makePhraseMatcher(TOC_TITLE_PHRASES);
+    const hasColHdrText = makePhraseMatcher(TOC_COLUMN_HEADER_PHRASES);
+    const hasNonTocHdrText = makePhraseMatcher(NON_TOC_PAGE_HEADERS);
 
     // Build lines from items (same as extractor)
     function buildLinesFromItems(items) {
@@ -1645,17 +1674,25 @@
       return lines;
     }
 
-    function getHeaderTextFolded(lines, viewport) {
-      const h = viewport.height || 1;
-      const headerLines = lines.filter(ln => {
-        const y = (ln.items && ln.items.length) ? Math.min(...ln.items.map(i => i.y || 0)) : 999999;
-        return y <= h * 0.22;
+    // Robust header detection using relative Y clustering
+    function getHeaderTextRaw(lines) {
+      if (!lines.length) return "";
+      // Find visual top (minY)
+      const lineYs = lines.map(ln => Math.min(...(ln.items || []).map(i => i.y ?? 1e9)));
+      const minY = Math.min(...lineYs);
+
+      // Filter lines within 120px of the top cluster
+      const headerLines = lines.filter((ln, idx) => {
+        const y = lineYs[idx];
+        return (y - minY) <= 120; 
       });
+
       const raw = headerLines
         .slice(0, 8)
         .map(ln => TocService.assembleLineTextFromItems(ln.items || []))
         .join(" ");
-      return foldText(raw);
+
+      return raw;
     }
 
     // Detect page-last and page-first formats
@@ -1772,11 +1809,11 @@
       const rawText = rawLines.join("\n");
       const cleanLines = rawLines.map(l => stripNoise(l)).map(l => l.trim()).filter(Boolean);
 
-      // Header signals
-      const headerFolded = getHeaderTextFolded(lines, viewport);
-      const hasTocTitle = TOC_TITLE_PATTERN2.test(headerFolded) || TOC_KEYWORD_PATTERN.test(headerFolded);
-      const hasColumnHeader = TOC_COLHDR_PATTERN2.test(headerFolded);
-      const hasNonTocHeader = NON_TOC_HDR_PATTERN2.test(headerFolded) && !hasTocTitle;
+      // Header signals (using robust matchers)
+      const headerRaw = getHeaderTextRaw(lines);
+      const hasTocTitle = hasTocTitleText(headerRaw);
+      const hasColumnHeader = hasColHdrText(headerRaw);
+      const hasNonTocHeader = hasNonTocHdrText(headerRaw) && !hasTocTitle;
 
       // Locator line counts (page-last and page-first formats)
       let pageLast = 0, pageFirst = 0;
@@ -2018,6 +2055,9 @@
       statusEl.textContent = original + " | 🔍 Scanning...";
       statusEl.style.backgroundColor = "";
 
+      // Reset confidence
+      AppState.toc.confidence = 'none';
+
       try {
         const total = AppState.pdf.pageCount;
         const maxScan = Math.min(50, total);
@@ -2089,6 +2129,7 @@
           } else {
             tocEnd = tocFromOutline;
           }
+          AppState.toc.confidence = 'high';
         } else {
           let searchEnd = maxScan;
           
@@ -2107,11 +2148,13 @@
           if (tocRange) {
             tocStart = tocRange.start;
             tocEnd = tocRange.end;
+            AppState.toc.confidence = 'high';
           } else if (searchEnd < maxScan) {
             const fullRange = await autoFindTocRangeRobust(1, maxScan, null);
             if (fullRange) {
               tocStart = fullRange.start;
               tocEnd = fullRange.end;
+              AppState.toc.confidence = 'high';
             }
           }
         }
@@ -2131,6 +2174,10 @@
           parts.push("ToC pg " + tocStart + "-" + (tocEnd || tocStart));
           await PdfService.renderPreview(tocStart);
         } else {
+          // Fallback defaults if nothing found
+          El.tocStart.value = 1;
+          El.tocEnd.value = Math.min(3, total);
+          AppState.toc.confidence = 'low';
           parts.push("ToC ?");
         }
 
@@ -2185,6 +2232,16 @@
 
       const startPage = safeParseInt(El.tocStart.value) || 1;
       const endPage = safeParseInt(El.tocEnd.value) || startPage;
+
+      // Guard: If auto-detect failed (low confidence) and user hasn't changed the defaults
+      if (AppState.toc.confidence === 'low') {
+         // Check if values are still the defaults (1 and 3)
+         if (startPage === 1 && endPage === Math.min(3, AppState.pdf.pageCount)) {
+             if (!confirm("Auto-detect could not find a Table of Contents. Do you want to attempt parsing the default range (Pages 1-3)?")) {
+                 return false;
+             }
+         }
+      }
 
       if (startPage < 1 || endPage > AppState.pdf.pageCount || startPage > endPage) {
         showExtractStatus("error", "Invalid ToC page range.");
@@ -2521,17 +2578,13 @@
         if (shouldSort) sortChaptersByPage();
       }
 
-      if (!confirm("This will create a new PDF with your bookmarks. Continue?")) {
-        return;
-      }
-
       El.processBtn.disabled = true;
       El.status.classList.remove("hidden");
       El.status.className = "status-box processing";
       El.status.textContent = "Generating PDF...";
 
       try {
-        const { PDFDocument, PDFName, PDFNumber, PDFString } = PDFLib;
+        const { PDFDocument, PDFName, PDFNumber, PDFString, PDFNull } = PDFLib;
         const doc = await PDFDocument.load(AppState.pdf.bytes);
         const context = doc.context;
 
@@ -2539,10 +2592,6 @@
 
         const outlineItems = [];
         const skipped = [];
-
-        if (pageOffset > 1) {
-          outlineItems.push({ title: "Front Matter", pageIndex: 0 });
-        }
 
         for (const ch of (AppState.toc.chapters || [])) {
           const title = String(ch.title || "").trim();
@@ -2557,14 +2606,14 @@
           outlineItems.push({ title, pageIndex: pdfIndex });
         }
 
-        if (outlineItems.length) {
+        if (outlineItems.length > 0) {
           const refs = [];
           for (const item of outlineItems) {
             const pageRef = doc.getPages()[item.pageIndex].ref;
             const dict = context.obj({
               Title: PDFString.of(item.title),
-              Dest: context.obj([pageRef, PDFName.of("XYZ"), null, null, null]),
-              Parent: null,
+              Dest: context.obj([pageRef, PDFName.of("XYZ"), PDFNull, PDFNull, PDFNull]),
+              Parent: PDFNull,
               Count: PDFNumber.of(0)
             });
             refs.push(context.register(dict));
@@ -2619,17 +2668,44 @@
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        
+        // Fix: Delay revocation for Safari/Slow browsers
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
 
-        const chapterCount = outlineItems.length - (pageOffset > 1 ? 1 : 0);
+        const chapterCount = outlineItems.length;
+        let msg = "";
+        let cls = "success";
+
         if (skipped.length) {
-          El.status.className = "status-box warning";
-          El.status.textContent = "PDF generated with " + outlineItems.length + " bookmarks (" + chapterCount + " chapters). " +
-            skipped.length + " skipped due to invalid page mapping.";
+          cls = "warning";
+          msg = "PDF generated with " + chapterCount + " bookmarks. " + skipped.length + " skipped due to invalid page mapping.";
         } else {
-          El.status.className = "status-box success";
-          El.status.textContent = "PDF generated with " + outlineItems.length + " bookmarks (" + chapterCount + " chapters).";
+          msg = "PDF generated with " + chapterCount + " bookmarks.";
         }
+
+        // Fix: Secure DOM creation for manual download link
+        El.status.className = "status-box " + cls;
+        El.status.textContent = ""; // Clear previous content
+        
+        const msgNode = document.createTextNode(msg);
+        El.status.appendChild(msgNode);
+        El.status.appendChild(document.createElement("br"));
+        El.status.appendChild(document.createElement("br"));
+
+        const linkText = document.createTextNode("If the download didn't start automatically, ");
+        El.status.appendChild(linkText);
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = outputFilename;
+        link.textContent = "click here to download";
+        link.style.color = "inherit";
+        link.style.textDecoration = "underline";
+        link.style.fontWeight = "bold";
+        El.status.appendChild(link);
+        
+        El.status.appendChild(document.createTextNode("."));
+
       } catch (e) {
         console.error(e);
         El.status.className = "status-box error";
