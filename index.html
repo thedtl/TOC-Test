@@ -719,7 +719,11 @@
       async function loadFromBytes(bytes, filename) {
         AppState.pdf.bytes = bytes;
         AppState.pdf.filename = filename || "document.pdf";
-        AppState.pdf.doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+        
+        // FIX: Clone the buffer for PDF.js so the original isn't detached by the worker
+        const pdfJsCopy = bytes.slice(0);
+        AppState.pdf.doc = await pdfjsLib.getDocument({ data: pdfJsCopy }).promise;
+        
         AppState.pdf.pageCount = AppState.pdf.doc.numPages;
 
         AppState.pdf.pageLabels = null;
