@@ -3,1475 +3,475 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF ToC Tool</title>
+  <title>PDF ToC Tool (AI Backend)</title>
 
   <!-- Libraries -->
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
     :root {
       --primary: #2563eb;
       --primary-hover: #1d4ed8;
-      --bg: #f3f4f6;
-      --card-bg: #ffffff;
-      --text: #1f2937;
-      --border: #e5e7eb;
+      --success: #059669;
       --danger: #dc2626;
-      --danger-light: #fef2f2;
-      --ok: #059669;
-      --ok-hover: #047857;
+      --warning: #d97706;
+      --bg: #f8fafc;
+      --border: #e5e7eb;
+      --text: #111827;
       --muted: #6b7280;
     }
 
-    * { box-sizing: border-box; }
-
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 20px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      line-height: 1.5;
+      margin: 0;
+      padding: 22px;
+      max-width: 1000px;
+      margin-left: auto;
+      margin-right: auto;
     }
 
-    h1 {
-      color: #111827;
-      border-bottom: 3px solid var(--primary);
-      padding-bottom: 15px;
-      margin-bottom: 30px;
-    }
+    h1 { margin: 0 0 14px; }
 
     .card {
-      background: var(--card-bg);
-      border-radius: 8px;
-      padding: 25px;
-      margin-bottom: 25px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      background: #fff;
       border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
     }
 
-    .card h2 {
-      margin-top: 0;
-      font-size: 1.25rem;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+    .hidden { display: none !important; }
 
     .step-number {
-      background: var(--primary);
-      color: white;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
+      display: inline-flex;
       justify-content: center;
-      font-size: 0.9rem;
-      font-weight: bold;
-    }
-
-    input[type="text"], input[type="number"], select, textarea {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-bottom: 10px;
+      align-items: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      background: #e0e7ff;
+      color: #3730a3;
+      font-weight: 700;
+      margin-right: 8px;
       font-size: 14px;
     }
 
-    button {
-      background: var(--primary);
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 600;
-      transition: background 0.2s;
-    }
-
-    button:hover { background: var(--primary-hover); }
-    button:disabled { background: #9ca3af; cursor: not-allowed; opacity: 0.7; }
-
-    button.secondary { background: var(--muted); }
-    button.secondary:hover { background: #4b5563; }
-
-    button.success { background: var(--ok); }
-    button.success:hover { background: var(--ok-hover); }
-
-    button.danger { background: #dc2626; }
-    button.danger:hover { background: #b91c1c; }
-
-    .hidden { display: none !important; }
-    .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .button-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-
-    .toolbar {
-      background: #e5e7eb;
-      padding: 8px;
-      border-radius: 6px;
-      margin-bottom: 15px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    .toolbar .separator {
-      width: 1px;
-      height: 20px;
-      background: #ccc;
-      margin: 0 5px;
-    }
-
-    #preview-canvas {
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
       border: 1px solid var(--border);
-      max-width: 100%;
-      max-height: 520px;
-      margin-top: 10px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-      object-fit: contain;
-      cursor: pointer;
+      font-size: 14px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
     }
+
+    textarea { min-height: 110px; resize: vertical; }
+
+    button {
+      border: 0;
+      border-radius: 9px;
+      padding: 10px 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: .12s ease;
+    }
+
+    button.primary { background: var(--primary); color: #fff; }
+    button.primary:hover { background: var(--primary-hover); }
+    button.success { background: var(--success); color: #fff; }
+    button.secondary { background: #f3f4f6; color: #111827; }
+    button.secondary:hover { filter: brightness(.97); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
 
     .status-box {
+      border-radius: 10px;
       padding: 12px;
-      border-radius: 6px;
-      margin-top: 12px;
+      border: 1px solid var(--border);
+      background: #f9fafb;
+      color: #111827;
+      font-size: 14px;
+      margin-top: 10px;
+      overflow-wrap: anywhere;
+    }
+    .status-box.processing { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .status-box.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .status-box.warning { background: #ffedd5; color: #9a3412; border: 1px solid #fed7aa; }
+    .status-box.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 8px 0;
+      color: var(--muted);
       font-size: 13px;
     }
-    .status-box.success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
-    .status-box.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-    .status-box.processing { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
-    .status-box.warning { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+
+    .preview-wrap {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      margin-top: 12px;
+    }
+
+    canvas {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      max-width: 100%;
+      height: auto;
+    }
 
     .chapter-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: 26px 1fr 120px 34px;
       gap: 10px;
       align-items: center;
-      padding: 8px;
-      background: #f9fafb;
+      padding: 10px;
       border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      background: #fff;
     }
 
-    .chapter-row.dragging { opacity: 0.5; }
-    .chapter-row.invalid { background: var(--danger-light); border-color: var(--danger); }
-
-    .chapter-row .validation-msg {
-      font-size: 11px;
-      color: var(--danger);
-      display: none;
-      width: 100%;
-      margin-top: 4px;
-      padding-left: 30px;
-    }
-    .chapter-row.invalid .validation-msg { display: block; }
-
-    .chapter-row input { margin-bottom: 0; }
-    .chapter-row .chapter-title { flex: 1; min-width: 280px; }
-    .chapter-row .chapter-page { width: 100px; text-align: center; }
-
-    .chapter-row.invalid .chapter-page {
-      border-color: var(--danger);
-      background: var(--danger-light);
-    }
+    .chapter-row.invalid { border-color: #fecaca; background: #fef2f2; }
+    .chapter-row.warning { border-color: #fed7aa; background: #fff7ed; }
 
     .drag-handle {
+      user-select: none;
       cursor: grab;
       color: #9ca3af;
-      padding: 0 5px;
       font-size: 18px;
-      user-select: none;
+      text-align: center;
     }
-    .drag-handle:active { cursor: grabbing; }
 
-    .small-note { font-size: 11px; color: #666; }
+    .chapter-title, .chapter-page { margin-bottom: 0 !important; }
 
-    .settings-box {
-      background: #f3f4f6;
-      border: 1px solid #e5e7eb;
+    .del-btn {
+      background: #fee2e2;
+      color: #991b1b;
+      font-weight: 900;
       border-radius: 8px;
-      padding: 12px;
-      margin-top: 10px;
+      padding: 8px;
     }
 
-    body.busy-cursor, body.busy-cursor button, body.busy-cursor input, body.busy-cursor select {
-      cursor: wait !important;
+    .validation-msg {
+      grid-column: 1 / -1;
+      font-size: 12px;
+      color: #991b1b;
+      margin-top: 2px;
+      margin-left: 36px;
     }
-    body.busy-cursor button {
-      opacity: 0.7;
-      pointer-events: none;
+
+    .small-note {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: -6px;
+      margin-bottom: 10px;
     }
+
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
   </style>
 </head>
 
 <body>
-  <h1>📚 PDF ToC Tool</h1>
+  <h1>📚 PDF ToC Tool (AI Backend)</h1>
 
-  <!-- Step 1: Upload -->
+  <!-- Step 1 -->
   <div class="card">
     <h2><span class="step-number">1</span> Select PDF</h2>
 
-    <div class="flex-row" style="align-items:flex-start;">
-      <div style="flex: 1; min-width: 220px;">
-        <label style="font-size: 0.9em;">From your computer:</label>
-        <input type="file" id="pdf-file" accept=".pdf">
+    <div class="status-box" style="margin-top: 10px;">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
+        <div style="flex:1; min-width:280px;">
+          <label>Backend URL</label>
+          <input type="text" id="backend-url" value="https://toc-ocr-482285058910.us-west3.run.app" />
+        </div>
+
+        <div style="width:160px;">
+          <label>AI scan pages</label>
+          <input type="number" id="ai-max-pages" value="40" min="1" max="200" />
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button id="backend-test-btn" class="secondary">Test Backend</button>
+          <span id="backend-status" style="color:#666; font-size:13px;"></span>
+        </div>
+      </div>
+      <div class="small-note">
+        The AI backend endpoint used is <code>/analyze-pdf-ai</code>.
+      </div>
+    </div>
+
+    <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-start; margin-top: 12px;">
+      <div style="flex:1; min-width:200px;">
+        <label style="font-size: 0.9em;">From your computer</label>
+        <input type="file" id="pdf-file" accept=".pdf" />
       </div>
 
-      <div style="display: flex; align-items: center; color: #999; font-weight: 700; padding-top: 24px;">OR</div>
+      <div style="display:flex; align-items:center; color:#9ca3af; font-weight:700;">OR</div>
 
-      <div style="flex: 2; min-width: 320px;">
-        <label style="font-size: 0.9em;">From Dropbox URL:</label>
-        <div class="flex-row" style="flex-wrap: nowrap;">
-          <input type="text" id="pdf-url" placeholder="https://www.dropbox.com/s/..." style="flex: 1; margin-bottom: 0;">
+      <div style="flex:2; min-width:280px;">
+        <label style="font-size: 0.9em;">From Dropbox URL</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="pdf-url" placeholder="https://www.dropbox.com/s/..." style="flex:1; margin-bottom:0;" />
           <button id="load-url-btn" class="secondary">Load</button>
         </div>
-        <div class="small-note" style="margin-top: 6px;">Paste a Dropbox share link</div>
+        <div class="small-note">Paste a Dropbox share link</div>
       </div>
     </div>
 
-    <div id="file-info-container" class="hidden" style="margin-top: 15px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+    <div id="file-info-container" class="hidden" style="margin-top: 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
       <div id="file-info" style="font-weight: 700;"></div>
-      <div class="flex-row">
-        <button id="auto-detect-btn" class="secondary" style="padding: 6px 10px; font-size: 0.9em;">
-          ✨ Re-run Auto-Detect
-        </button>
-        <button id="auto-parse-btn" class="success" style="padding: 6px 10px; font-size: 0.9em;">
-          ⚡ Auto-Parse ToC
-        </button>
-      </div>
+      <button id="auto-detect-btn" class="secondary">✨ AI Auto Analyze PDF</button>
     </div>
 
-    <div id="url-error" class="hidden" style="margin-top: 10px; padding: 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 13px;"></div>
+    <div id="url-error" class="hidden" style="margin-top: 10px; padding:10px; background:#fee2e2; color:#991b1b; border-radius:8px; font-size:13px;"></div>
+
+    <div class="preview-wrap hidden" id="preview-wrap">
+      <div>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+          <button id="prev-page-btn" class="secondary">←</button>
+          <input id="preview-page-input" type="number" value="1" min="1" style="width:90px; margin-bottom:0;">
+          <button id="next-page-btn" class="secondary">→</button>
+          <select id="preview-scale" style="width: 150px; margin-bottom: 0;">
+            <option value="1">100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5" selected>150%</option>
+            <option value="2">200%</option>
+          </select>
+        </div>
+        <canvas id="preview-canvas"></canvas>
+        <div class="small-note">Click the AI button to populate ToC + chapters automatically.</div>
+      </div>
+    </div>
   </div>
 
-  <!-- Step 2: Offset + Preview -->
+  <!-- Step 2 -->
   <div class="card hidden" id="step2">
-    <h2><span class="step-number">2</span> Page Offset and Preview</h2>
-    <p style="color: #666; font-size: 0.92em; margin-bottom: 15px;">
-      "Book Page 1" means the printed page number 1 in the body text, not the PDF page 1.
-    </p>
+    <h2><span class="step-number">2</span> Page Offset</h2>
+    <p class="small-note">Configure how printed page numbers map to PDF pages. AI will fill this automatically.</p>
 
-    <div style="display: flex; gap: 18px; flex-wrap: wrap;">
-      <div style="flex: 1; min-width: 260px;">
-        <label>Book Page 1 is on PDF Page:</label>
-        <input type="number" id="page-offset" value="1" min="1">
-        <div class="small-note">Everything before this becomes "Front Matter".</div>
+    <div style="display:flex; gap:20px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:250px;">
+        <label>Content starts on PDF page:</label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="number" id="page-offset" value="1" min="1" style="width:100px; margin-bottom:0;">
+          <button id="set-offset-to-preview" class="secondary" style="padding:8px 10px;">← Use Current</button>
+          <button id="reset-offset" class="secondary" style="padding:8px 10px;">Reset</button>
+        </div>
 
-        <div class="settings-box">
-          <div style="font-weight: 700; margin-bottom: 8px;">Automation</div>
-          <div class="flex-row">
-            <button id="auto-run-btn" class="success" style="flex: 1;">🚀 Auto-run (detect + parse)</button>
-            <button id="reset-chapters-btn" class="secondary" style="flex: 1;">Reset chapters</button>
-          </div>
-          <label class="small-note" style="display:flex; gap:8px; align-items:center; margin-top:10px;">
-            <input type="checkbox" id="auto-ocr-fallback" checked style="width:auto; margin:0;">
-            If extraction is weak, automatically OCR the ToC pages
+        <div style="margin-top:12px;">
+          <label style="display:flex; gap:8px; align-items:center; font-weight:600;">
+            <input type="checkbox" id="custom-first-page-toggle" style="width:auto; margin:0;">
+            Document starts on a page other than 1
           </label>
         </div>
-      </div>
 
-      <div style="flex: 1.3; min-width: 320px;">
-        <div class="flex-row" style="justify-content: space-between; margin-bottom: 6px;">
-          <div class="flex-row" style="flex-wrap: nowrap;">
-            <button id="prev-page-btn" class="secondary" style="padding: 6px 10px;">◀</button>
-            <span id="preview-page-num" style="font-weight: 800; min-width: 90px; text-align: center;">Page 1</span>
-            <button id="next-page-btn" class="secondary" style="padding: 6px 10px;">▶</button>
-          </div>
-
-          <div class="flex-row">
-            <select id="preview-scale" style="width: auto; margin: 0; padding: 6px 10px;" title="Preview resolution">
-              <option value="1">1x</option>
-              <option value="1.5">1.5x</option>
-              <option value="2" selected>2x</option>
-              <option value="3">3x</option>
-              <option value="4">4x</option>
-            </select>
-            <button id="save-preview-btn" class="secondary" style="padding: 6px 10px;" title="Save current page as PNG">📷 Save</button>
-          </div>
+        <div id="custom-first-page-section" style="display:none; margin-top:10px; padding:12px; background:#fefce8; border:1px solid #fef08a; border-radius:8px;">
+          <label style="font-size: 0.9em;">First page number in document:</label>
+          <input type="number" id="first-page-number" value="1" min="1" style="width:140px; margin-bottom:0;">
+          <div class="small-note">Example: 407 for a journal issue</div>
         </div>
-
-        <canvas id="preview-canvas" title="Click to open full size in a new tab"></canvas>
-        <div class="small-note" style="text-align:center; margin-top: 6px;">Click image to open full size</div>
       </div>
     </div>
   </div>
 
-  <!-- Step 3: ToC -->
+  <!-- Step 3 -->
   <div class="card hidden" id="step3">
-    <h2><span class="step-number">3</span> Table of Contents</h2>
+    <h2><span class="step-number">3</span> Chapters</h2>
 
-    <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; padding: 18px; margin-bottom: 18px;">
-      <div style="font-weight: 800; margin-bottom: 8px; color: #0369a1;">📄 ToC page range</div>
-      <div class="small-note" style="margin-bottom: 10px;">Set the PDF page range that contains the table of contents.</div>
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:16px;">
+      <div style="font-weight:800; color:#1d4ed8; margin-bottom:6px;">✨ AI Auto Analyze</div>
+      <div class="small-note">Uses your backend <code>/analyze-pdf-ai</code> to detect ToC range + chapters.</div>
 
-      <div class="flex-row" style="margin-bottom: 8px;">
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.95em;">
-          ToC starts:
-          <input type="number" id="toc-start-page" value="1" min="1" style="width: 90px; margin: 0; padding: 6px 10px;">
-        </label>
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.95em;">
-          ToC ends:
-          <input type="number" id="toc-end-page" value="1" min="1" style="width: 90px; margin: 0; padding: 6px 10px;">
-        </label>
-        <span id="page-range-hint" class="small-note"></span>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button id="extract-btn" class="success">✨ Run AI Analysis</button>
+        <span id="page-range-hint" style="font-size:13px; color:#666;"></span>
       </div>
 
-      <div class="flex-row" style="margin-bottom: 12px;">
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.95em;">
-          OCR Language:
-          <select id="ocr-lang" style="width: auto; margin: 0; padding: 6px 10px;">
-            <option value="eng" selected>English</option>
-            <option value="spa">Spanish</option>
-            <option value="fra">French</option>
-            <option value="deu">German</option>
-            <option value="kor">Korean</option>
-            <option value="chi_sim">Chinese</option>
-          </select>
+      <div id="extract-status" class="status-box hidden"></div>
+
+      <div style="margin-top:12px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+        <label style="display:flex; gap:6px; align-items:center; font-weight:700;">
+          ToC start:
+          <input type="number" id="toc-start-page" value="1" min="1" style="width:90px; margin:0;">
         </label>
+        <label style="display:flex; gap:6px; align-items:center; font-weight:700;">
+          ToC end:
+          <input type="number" id="toc-end-page" value="1" min="1" style="width:90px; margin:0;">
+        </label>
+        <button id="set-toc-current-btn" class="secondary">Set ToC to current page</button>
       </div>
-
-      <div class="flex-row">
-        <button id="set-toc-current-btn" class="secondary" style="padding: 8px 12px;">Set to current page</button>
-        <button id="extract-text-btn" class="success" style="padding: 8px 16px;">Extract from embedded text (fast)</button>
-        <button id="extract-ocr-btn" class="success" style="padding: 8px 16px;">OCR ToC pages from PDF (best for scans)</button>
-      </div>
-
-      <div id="extract-status" class="status-box hidden" style="margin-top: 12px;"></div>
     </div>
 
-    <div id="front-matter-row" class="hidden" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
-      <span style="color: #166534; font-size: 1.1em;">📑</span>
-      <span id="front-matter-text" style="flex: 1; font-weight: 800; color: #166534;">Front Matter</span>
-      <span id="front-matter-pages" style="color: #666; font-size: 0.9em;"></span>
-    </div>
-
-    <div class="toolbar">
-      <button id="undo-btn" disabled class="secondary" style="padding: 6px 10px;">↶ Undo</button>
-      <button id="redo-btn" disabled class="secondary" style="padding: 6px 10px;">↷ Redo</button>
-      <div class="separator"></div>
-      <button id="sort-btn" class="secondary" style="padding: 6px 10px;">Sort by Page</button>
-      <button id="validate-btn" class="secondary" style="padding: 6px 10px;">Validate</button>
-      <span style="margin-left: auto; font-size: 0.85em; color: #666;">Drag to reorder</span>
-    </div>
+    <div class="toolbar">Drag to reorder</div>
 
     <div id="chapter-list"></div>
-    <button id="add-chapter-btn" style="margin-top: 10px; width: 100%; background: #e5e7eb; color: #111827;">+ Add Chapter Manually</button>
+
+    <button id="add-chapter-btn" class="secondary" style="width:100%;">+ Add Chapter Manually</button>
   </div>
 
-  <!-- Step 4: Generate -->
+  <!-- Step 4 -->
   <div class="card hidden" id="step4">
     <h2><span class="step-number">4</span> Generate PDF</h2>
 
-    <div style="margin-bottom: 10px;">
-      <label style="font-size: 0.9em;">Output filename:</label>
-      <input type="text" id="output-filename" placeholder="processed_document.pdf" style="margin-bottom: 10px;">
-      
-      <label style="display:flex; gap:8px; align-items:center; font-size: 0.9em; color: #444;">
-        <input type="checkbox" id="preserve-labels" style="width:auto; margin:0;">
-        Preserve existing page labels (if any)
-      </label>
-      <div class="small-note" style="margin-left: 24px; margin-bottom: 10px;">
-        If checked, we won't overwrite the Roman/Arabic numbering scheme of the original PDF.
-      </div>
-    </div>
+    <label style="font-size: 0.9em;">Output filename</label>
+    <input type="text" id="output-filename" placeholder="processed_document.pdf">
 
-    <button id="process-btn" class="success" style="width: 100%; font-size: 1.1em; padding: 15px;">Download PDF with Bookmarks</button>
+    <button id="process-btn" class="success" style="width:100%; font-size:16px;">Download PDF with Bookmarks</button>
     <div id="status" class="status-box hidden"></div>
   </div>
 
   <script>
-    /**********************************************************************
-     * 0) Version pinning for PDF.js worker
-     **********************************************************************/
-    (function initPdfJsWorkerPinning(){
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    })();
+    const PDFJS_VERSION = "3.11.174";
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
 
-    /**********************************************************************
-     * 1) App state store
-     **********************************************************************/
-    const AppState = {
-      pdf: {
-        doc: null,
-        bytes: null,
-        filename: "",
-        pageCount: 0,
-        pageLabels: null,
-        pageLabelIndexByLabel: null,
-        romanToArabicBoundary: null,
-        outline: null
-      },
-      toc: {
-        startPage: 1,
-        endPage: 1,
-        pageOffset: 1,
-        detectedMaxRoman: 0,
-        mainContentStartPdfPage: null,
-        chapters: [],
-        confidence: 'none' // 'high', 'low', 'none'
-      },
-      ui: {
-        currentPreviewPage: 1,
-        busy: false
-      },
-      history: {
-        stack: [],
-        index: -1,
-        isUndoRedo: false,
-        isBulkEdit: false
-      },
-      ocr: {
-        scheduler: null,
-        workers: [],
-        lastLangsKey: "",
-        lastOem: 1
-      }
-    };
-
-    /**********************************************************************
-     * 2) DOM helpers
-     **********************************************************************/
     function $(id) { return document.getElementById(id); }
 
-    const El = {
-      chapterList: $("chapter-list"),
-      pdfFile: $("pdf-file"),
-      pdfUrl: $("pdf-url"),
-      loadUrlBtn: $("load-url-btn"),
-      urlError: $("url-error"),
-      fileInfoContainer: $("file-info-container"),
-      fileInfo: $("file-info"),
-      autoDetectBtn: $("auto-detect-btn"),
-      autoParseBtn: $("auto-parse-btn"),
-      autoRunBtn: $("auto-run-btn"),
-      resetChaptersBtn: $("reset-chapters-btn"),
-      pageOffset: $("page-offset"),
-      previewCanvas: $("preview-canvas"),
-      previewPageNum: $("preview-page-num"),
-      previewScale: $("preview-scale"),
-      prevPageBtn: $("prev-page-btn"),
-      nextPageBtn: $("next-page-btn"),
-      savePreviewBtn: $("save-preview-btn"),
+    // --- State ---
+    let pdfDoc = null;
+    let pdfBytes = null;
+    let totalPages = 0;
+    let currentPreviewPage = 1;
 
-      step2: $("step2"),
-      step3: $("step3"),
-      step4: $("step4"),
+    // Page label state (kept for compatibility with the old bookmark logic)
+    let pageLabels = null;
+    let pageLabelIndexByLabel = null;
+    let detectedMaxRoman = 0;
 
-      tocStart: $("toc-start-page"),
-      tocEnd: $("toc-end-page"),
-      setTocCurrentBtn: $("set-toc-current-btn"),
-      pageRangeHint: $("page-range-hint"),
+    // DOM refs used by bookmark logic
+    const chapterListEl = $("chapter-list");
+    const pageOffsetInput = $("page-offset");
 
-      extractTextBtn: $("extract-text-btn"),
-      extractOcrBtn: $("extract-ocr-btn"),
-      extractStatus: $("extract-status"),
+    // --- Backend helpers ---
+    function getBackendBaseUrl() {
+      const inp = $("backend-url");
+      let base = (inp && inp.value ? inp.value : "").trim();
+      return base.replace(/\/+$/, "");
+    }
 
-      ocrLang: $("ocr-lang"),
-      autoOcrFallback: $("auto-ocr-fallback"),
+    function escapeHtml(str) {
+      if (str == null) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
 
-      frontMatterRow: $("front-matter-row"),
-      frontMatterPages: $("front-matter-pages"),
+    function setBackendStatus(text, isError=false) {
+      const el = $("backend-status");
+      if (!el) return;
+      el.textContent = text || "";
+      el.style.color = isError ? "#b91c1c" : "#666";
+    }
 
-      undoBtn: $("undo-btn"),
-      redoBtn: $("redo-btn"),
-      sortBtn: $("sort-btn"),
-      validateBtn: $("validate-btn"),
-      addChapterBtn: $("add-chapter-btn"),
-
-      outputFilename: $("output-filename"),
-      preserveLabels: $("preserve-labels"),
-      processBtn: $("process-btn"),
-      status: $("status")
-    };
-
-    function setBusy(isBusy) {
-      AppState.ui.busy = isBusy;
-      if (isBusy) {
-        document.body.classList.add("busy-cursor");
-      } else {
-        document.body.classList.remove("busy-cursor");
+    async function testBackend() {
+      const base = getBackendBaseUrl();
+      if (!base) { setBackendStatus("Backend URL required.", true); return { ok:false, gemini_available:false }; }
+      setBackendStatus("Checking…");
+      try {
+        const res = await fetch(`${base}/health`);
+        if (!res.ok) { setBackendStatus(`Backend error (${res.status}).`, true); return { ok:false, gemini_available:false }; }
+        const data = await res.json();
+        const gem = !!data.gemini_available;
+        setBackendStatus(gem ? "Backend OK. AI ready." : "Backend OK, but AI not available.", !gem);
+        return { ok:true, gemini_available:gem };
+      } catch {
+        setBackendStatus("Cannot reach backend.", true);
+        return { ok:false, gemini_available:false };
       }
     }
 
-    /**********************************************************************
-     * 3) Utilities
-     **********************************************************************/
-    function normalizeNewlines(s) {
-      return (s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    function showAiStatus(text, kind="processing") {
+      const box = $("extract-status");
+      box.classList.remove("hidden");
+      box.className = `status-box ${kind}`;
+      box.innerHTML = text;
     }
 
-    function safeParseInt(x) {
-      const n = parseInt(String(x).trim(), 10);
-      return Number.isFinite(n) ? n : NaN;
+    // --- PDF Load helpers ---
+    async function loadPdfFromBytes(bytes, filename="document.pdf") {
+      pdfBytes = bytes;
+      const loadingTask = pdfjsLib.getDocument({ data: bytes });
+      pdfDoc = await loadingTask.promise;
+      totalPages = pdfDoc.numPages;
+
+      $("file-info").textContent = `${filename} | ${totalPages} pages`;
+      $("file-info-container").classList.remove("hidden");
+
+      $("preview-wrap").classList.remove("hidden");
+      ["step2", "step3", "step4"].forEach(id => $(id).classList.remove("hidden"));
+
+      renderPreview(1);
+
+      // Auto-run AI after load
+      await aiAnalyzePdf();
     }
 
-    function normalizePageToken(token) {
-      let t = (token || "").trim();
-      t = t.replace(/[.)\]]+$/g, "");
-      t = t.replace(/^[[(]+/g, "");
-      t = t.trim();
-      t = t.replace(/^(\d+)\s*[–-]\s*\d+$/u, "$1");
-      t = t.replace(/^([ivxlcdm]+)\s*[–-]\s*[ivxlcdm]+$/iu, "$1");
-      return t.trim();
-    }
+    async function loadFromUrl() {
+      const urlInput = $("pdf-url");
+      const errorEl = $("url-error");
+      const url = (urlInput.value || "").trim();
 
-    function isRomanNumeralToken(token) {
-      return /^[ivxlcdm]+$/i.test(token || "");
-    }
+      errorEl.classList.add("hidden");
 
-    function isPageNumberToken(token) {
-      const t = (token || "").trim();
-      return /^\d+$/.test(t) || isRomanNumeralToken(t);
-    }
-
-    function romanToInt(roman) {
-      const s = String(roman || "").toLowerCase();
-      if (!/^[ivxlcdm]+$/.test(s)) return NaN;
-      const map = { i:1, v:5, x:10, l:50, c:100, d:500, m:1000 };
-      let total = 0;
-      let prev = 0;
-      for (let i = s.length - 1; i >= 0; i--) {
-        const val = map[s[i]] || 0;
-        if (val < prev) total -= val;
-        else { total += val; prev = val; }
-      }
-      return total > 0 ? total : NaN;
-    }
-
-    function foldText(s) {
-      const nfd = (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      return nfd
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
-
-    // --- Multilingual Matcher Utilities (Fix for CJK) ---
-    function normAny(s) {
-      return String(s || "").normalize("NFKC").toLowerCase();
-    }
-
-    function normLatin(s) {
-      return foldText(s);
-    }
-
-    function makePhraseMatcher(phrases) {
-      const latinNeedles = [];
-      const anyNeedles = [];
-
-      for (const p of phrases) {
-        const latin = normLatin(p);
-        if (latin) latinNeedles.push(latin);
-        else anyNeedles.push(normAny(p)); // for CJK etc
-      }
-
-      return (haystackRaw) => {
-        const anyHay = normAny(haystackRaw);
-        const latinHay = normLatin(haystackRaw);
-
-        return (
-          latinNeedles.some(n => latinHay.includes(n)) ||
-          anyNeedles.some(n => anyHay.includes(n))
-        );
-      };
-    }
-    // ----------------------------------------------------
-
-    function joinPrefix(prefix, title) {
-      const p = String(prefix || "").trim();
-      const t = String(title || "").trim();
-      if (!p) return t;
-      if (!t) return p;
-      return p + ": " + t;
-    }
-
-    function stripNoise(s) {
-      return String(s || "")
-        .replace(/(?:\s*[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]\s*){4,}/gu, " ")
-        .replace(/[\.\u2024\u2025\u2026\u00B7\u22C5\u2219_·•]{2,}/gu, " ")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-    }
-
-    const MAIN_CONTENT_HEADINGS = new Set([
-      "introduction", "foreword", "preface", "prologue",
-      "introduccion", "prologo", "prefacio",
-      "avant propos", "preface", "prologue",
-      "einleitung", "vorwort", "prolog",
-      "introduzione", "prefazione", "prologo",
-      "introducao", "prefacio", "prologo"
-    ]);
-
-    // Basic ToC keywords for outline search
-    const TOC_KEYWORDS = [
-      "table of contents", "contents", "índice", "indice", "contenido",
-      "sommaire", "inhalt", "inhaltsverzeichnis", "capitoli", "sommario",
-      "tavola", "agenda", "목차", "目录", "目錄"
-    ];
-
-    const TOC_KEYWORD_PATTERN = new RegExp(
-      "(" + TOC_KEYWORDS.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join("|") + ")\\b",
-      "i"
-    );
-
-    function looksLikeSubchapter(title) {
-      if (/^\s*\d+\.\d+(?:\.\d+)*\s+/.test(title || "")) return true;
-      if (/^\s*[A-Z]\.\d+(?:\.\d+)*\s+/i.test(title || "")) return true;
-      return false;
-    }
-
-    function repairTrailingPageNumber(line) {
-      const tokens = (line || "").trim().split(/\s+/).filter(Boolean);
-      if (tokens.length < 3) return (line || "").trim();
-      let i = tokens.length - 1;
-
-      const take = [];
-      while (i >= 0 && /^\d$/.test(tokens[i]) && take.length < 4) {
-        take.push(tokens[i]);
-        i--;
-      }
-      if (take.length >= 2) {
-        if (i >= 0 && /^\d$/.test(tokens[i])) return (line || "").trim();
-        const joined = take.reverse().join("");
-        const rebuilt = tokens.slice(0, i + 1).concat([joined]).join(" ");
-        return rebuilt.trim();
-      }
-      return (line || "").trim();
-    }
-
-    /**********************************************************************
-     * 4) History system (undo / redo)
-     **********************************************************************/
-    function updateHistoryButtons() {
-      El.undoBtn.disabled = AppState.history.index <= 0;
-      El.redoBtn.disabled = AppState.history.index >= AppState.history.stack.length - 1;
-    }
-
-    function saveStateToHistory() {
-      if (AppState.history.isUndoRedo || AppState.history.isBulkEdit) return;
-      const snapshot = JSON.stringify(AppState.toc.chapters || []);
-      
-      if (AppState.history.index >= 0 && AppState.history.stack[AppState.history.index] === snapshot) {
+      if (!url) {
+        errorEl.textContent = "Please enter a URL";
+        errorEl.classList.remove("hidden");
         return;
       }
 
-      if (AppState.history.index < AppState.history.stack.length - 1) {
-        AppState.history.stack = AppState.history.stack.slice(0, AppState.history.index + 1);
-      }
-      AppState.history.stack.push(snapshot);
-      AppState.history.index++;
-
-      if (AppState.history.stack.length > 60) {
-        AppState.history.stack.shift();
-        AppState.history.index = Math.max(0, AppState.history.index - 1);
-      }
-      updateHistoryButtons();
-    }
-
-    function restoreStateFromHistory(snapshot) {
-      AppState.history.isUndoRedo = true;
-      const chapters = JSON.parse(snapshot || "[]");
-      setChapters(chapters, { saveHistory: false });
-      AppState.history.isUndoRedo = false;
-      validateAllChapters();
-    }
-
-    function undo() {
-      if (AppState.history.index > 0) {
-        AppState.history.index--;
-        restoreStateFromHistory(AppState.history.stack[AppState.history.index]);
-        updateHistoryButtons();
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+        const bytes = await res.arrayBuffer();
+        await loadPdfFromBytes(bytes, "Dropbox PDF");
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove("hidden");
       }
     }
 
-    function redo() {
-      if (AppState.history.index < AppState.history.stack.length - 1) {
-        AppState.history.index++;
-        restoreStateFromHistory(AppState.history.stack[AppState.history.index]);
-        updateHistoryButtons();
-      }
+    // --- Preview ---
+    async function renderPreview(pageNum) {
+      if (!pdfDoc) return;
+      currentPreviewPage = Math.max(1, Math.min(totalPages, pageNum));
+      $("preview-page-input").value = currentPreviewPage;
+
+      const page = await pdfDoc.getPage(currentPreviewPage);
+      const scale = Number($("preview-scale").value || 1.5);
+      const viewport = page.getViewport({ scale });
+
+      const canvas = $("preview-canvas");
+      const ctx = canvas.getContext("2d");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
     }
 
-    document.addEventListener("keydown", (e) => {
-      const z = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z";
-      const y = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y";
-      if (z && !e.shiftKey) { e.preventDefault(); undo(); }
-      if (y || (z && e.shiftKey)) { e.preventDefault(); redo(); }
-    });
-
-    /**********************************************************************
-     * 5) PDF service
-     **********************************************************************/
-    const PdfService = (function(){
-      const CORS_PROXY = "https://toc-pdf-proxy.ccrawford.workers.dev";
-      let urlFetchController = null;
-
-      async function loadFromBytes(bytes, filename) {
-        AppState.pdf.bytes = bytes;
-        AppState.pdf.filename = filename || "document.pdf";
-        
-        // FIX: Clone the buffer for PDF.js so the original isn't detached by the worker
-        const pdfJsCopy = bytes.slice(0);
-        AppState.pdf.doc = await pdfjsLib.getDocument({ data: pdfJsCopy }).promise;
-        
-        AppState.pdf.pageCount = AppState.pdf.doc.numPages;
-
-        AppState.pdf.pageLabels = null;
-        AppState.pdf.pageLabelIndexByLabel = null;
-        AppState.pdf.romanToArabicBoundary = null;
-        
-        try {
-          const labels = await AppState.pdf.doc.getPageLabels();
-          if (Array.isArray(labels) && labels.length) {
-            AppState.pdf.pageLabels = labels;
-            const m = new Map();
-            for (let i = 0; i < labels.length; i++) {
-              const lbl = normalizePageToken(labels[i]).toLowerCase();
-              if (lbl && !m.has(lbl)) m.set(lbl, i);
-            }
-            AppState.pdf.pageLabelIndexByLabel = m;
-            
-            let foundRoman = false;
-            for (let i = 0; i < labels.length; i++) {
-              const lbl = String(labels[i] || "").trim();
-              if (isRomanNumeralToken(lbl)) {
-                foundRoman = true;
-              } else if (foundRoman && /^\d+$/.test(lbl)) {
-                AppState.pdf.romanToArabicBoundary = i;
-                break;
-              }
-            }
-          }
-        } catch (e) {}
-
-        AppState.pdf.outline = null;
-        try {
-          AppState.pdf.outline = await AppState.pdf.doc.getOutline();
-        } catch (e) {}
-
-        El.fileInfo.textContent = AppState.pdf.filename + " (" + AppState.pdf.pageCount + " pages)";
-        El.fileInfoContainer.classList.remove("hidden");
-        El.urlError.classList.add("hidden");
-        El.pageOffset.max = AppState.pdf.pageCount;
-
-        const baseName = AppState.pdf.filename.replace(/\.pdf$/i, "");
-        El.outputFilename.value = baseName + "_bookmarked.pdf";
-
-        El.tocStart.max = AppState.pdf.pageCount;
-        El.tocEnd.max = AppState.pdf.pageCount;
-        El.tocStart.value = 1;
-        El.tocEnd.value = Math.min(3, AppState.pdf.pageCount);
-
-        ["step2", "step3", "step4"].forEach(id => $(id).classList.remove("hidden"));
-
-        AppState.ui.currentPreviewPage = 1;
-        await renderPreview(1);
-
-        if (!AppState.toc.chapters.length) {
-          setChapters([{ title: "", page: "" }], { saveHistory: true });
-        }
-
-        updatePageRangeHint();
-        validateAllChapters();
-        updateFrontMatterDisplay();
-      }
-
-      async function loadFromDropboxUrl(url) {
-        const clean = (url || "").trim();
-        if (!clean) throw new Error("Please enter a URL");
-        if (!clean.includes("dropbox.com")) throw new Error("Only Dropbox URLs are supported.");
-
-        if (urlFetchController) urlFetchController.abort();
-        urlFetchController = new AbortController();
-
-        const proxyUrl = CORS_PROXY + "/?url=" + encodeURIComponent(clean);
-        const resp = await fetch(proxyUrl, { signal: urlFetchController.signal });
-        if (!resp.ok) {
-          let msg = "HTTP " + resp.status;
-          try {
-            const j = await resp.json();
-            if (j && j.error) msg = j.error;
-          } catch (e) {}
-          throw new Error(msg);
-        }
-
-        const bytes = await resp.arrayBuffer();
-        const urlPath = new URL(clean).pathname;
-        const filename = decodeURIComponent(urlPath.split("/").pop()) || "document.pdf";
-        await loadFromBytes(bytes, filename);
-      }
-
-      async function renderPreview(pageNum) {
-        if (!AppState.pdf.doc) return;
-        const p = Math.max(1, Math.min(AppState.pdf.pageCount, pageNum));
-        AppState.ui.currentPreviewPage = p;
-        El.previewPageNum.textContent = "Page " + p;
-
-        const page = await AppState.pdf.doc.getPage(p);
-        const scale = parseFloat(El.previewScale.value) || 2;
-        const viewport = page.getViewport({ scale });
-
-        const canvas = El.previewCanvas;
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
-        canvas.width = Math.floor(viewport.width);
-        canvas.height = Math.floor(viewport.height);
-
-        await page.render({ canvasContext: ctx, viewport }).promise;
-      }
-
-      async function getTextItemsWithViewport(pageNum, scaleForGeometry) {
-        const page = await AppState.pdf.doc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: scaleForGeometry || 1 });
-        const textContent = await page.getTextContent();
-
-        const items = (textContent.items || [])
-          .filter(it => it && typeof it.str === "string" && it.str.trim() !== "")
-          .map(it => {
-            let x = 0, y = 0;
-            try {
-              const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
-              x = tx[4] || 0;
-              y = tx[5] || 0;
-            } catch (e) {
-              x = it.transform && it.transform[4] ? it.transform[4] : 0;
-              y = it.transform && it.transform[5] ? it.transform[5] : 0;
-            }
-
-            const w = (typeof it.width === "number" ? it.width : 0) * (viewport.scale || 1);
-            const h = (typeof it.height === "number" ? it.height : 0) * (viewport.scale || 1);
-            
-            return {
-              str: it.str,
-              x, y, w, h,
-              hasEOL: !!it.hasEOL
-            };
-          });
-
-        return { items, viewport };
-      }
-
-      async function renderPageToCanvas(pageNum, dpi) {
-        const page = await AppState.pdf.doc.getPage(pageNum);
-        const scale = Math.max(1, (dpi || 300) / 72);
-        const viewport = page.getViewport({ scale });
-
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
-        canvas.width = Math.floor(viewport.width);
-        canvas.height = Math.floor(viewport.height);
-
-        ctx.imageSmoothingEnabled = false;
-
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        return canvas;
-      }
-
-      async function getPageIndexFromDest(dest) {
-        if (!dest) return null;
-        try {
-          let resolvedDest = dest;
-          if (typeof dest === "string") {
-            resolvedDest = await AppState.pdf.doc.getDestination(dest);
-          }
-          if (Array.isArray(resolvedDest) && resolvedDest[0]) {
-            const pageIndex = await AppState.pdf.doc.getPageIndex(resolvedDest[0]);
-            return pageIndex;
-          }
-        } catch (e) {}
-        return null;
-      }
-
-      // Get link annotation stats for detecting clickable ToCs
-      async function getLinkStats(pageNum) {
-        if (!AppState.pdf.doc) return { total: 0, internal: 0, external: 0 };
-        const page = await AppState.pdf.doc.getPage(pageNum);
-
-        let ann = [];
-        try {
-          ann = await page.getAnnotations({ intent: "display" });
-        } catch (e) {
-          ann = [];
-        }
-
-        let total = 0, internal = 0, external = 0;
-
-        for (const a of (ann || [])) {
-          const isLink = a && (a.subtype === "Link" || a.url || a.dest);
-          if (!isLink) continue;
-
-          total++;
-          if (a.url) external++;
-          else internal++;
-        }
-
-        return { total, internal, external };
-      }
-
-      return {
-        loadFromBytes,
-        loadFromDropboxUrl,
-        renderPreview,
-        getTextItemsWithViewport,
-        renderPageToCanvas,
-        getPageIndexFromDest,
-        getLinkStats
-      };
-    })();
-
-    /**********************************************************************
-     * 6) Outline (bookmark) analysis
-     **********************************************************************/
-    async function findTocFromOutline() {
-      const outline = AppState.pdf.outline;
-      if (!outline || !outline.length) return null;
-
-      async function walkOutline(items, depth) {
-        for (const item of items) {
-          const title = foldText(item.title || "");
-          
-          if (TOC_KEYWORD_PATTERN.test(title) || title === "contents" || title === "toc") {
-            const pageIndex = await PdfService.getPageIndexFromDest(item.dest);
-            if (pageIndex !== null) {
-              return { type: "toc", pageIndex, title: item.title };
-            }
-          }
-          
-          const isMainContent = /^(chapter|introduction|foreword|preface|part)\s*\d*$/i.test(title) ||
-                               MAIN_CONTENT_HEADINGS.has(title);
-          if (isMainContent && depth === 0) {
-            const pageIndex = await PdfService.getPageIndexFromDest(item.dest);
-            if (pageIndex !== null) {
-              return { type: "content_start", pageIndex, title: item.title };
-            }
-          }
-          
-          if (item.items && item.items.length) {
-            const found = await walkOutline(item.items, depth + 1);
-            if (found) return found;
-          }
-        }
-        return null;
-      }
-
-      return await walkOutline(outline, 0);
+    function previewPage(delta) {
+      renderPreview(currentPreviewPage + delta);
     }
 
-    /**********************************************************************
-     * 7) Page token to PDF index mapping
-     **********************************************************************/
-    function pageTokenToPdfIndex(token) {
-      const t = normalizePageToken(token).toLowerCase();
-      if (!t) return null;
-
-      const m = AppState.pdf.pageLabelIndexByLabel;
-      if (m && m.has(t)) return m.get(t);
-
-      const total = AppState.pdf.pageCount || 0;
-      const pageOffset = safeParseInt(El.pageOffset.value) || 1;
-
-      if (/^\d+$/.test(t)) {
-        const pageNum = safeParseInt(t);
-        const pdfIndex = (pageNum - 1) + (pageOffset - 1);
-        return (pdfIndex >= 0 && pdfIndex < total) ? pdfIndex : null;
-      }
-
-      if (isRomanNumeralToken(t)) {
-        const rv = romanToInt(t);
-        const maxRoman = AppState.toc.detectedMaxRoman || 0;
-        if (Number.isFinite(rv) && rv > 0 && maxRoman > 0 && pageOffset > 1) {
-             const pdfIndex = (pageOffset - 1) - (maxRoman - rv + 1);
-             if (pdfIndex >= 0 && pdfIndex < (pageOffset - 1)) return pdfIndex;
-        }
-      }
-
-      return null;
+    function setTocRangeFromCurrentPage() {
+      $("toc-start-page").value = currentPreviewPage;
+      $("toc-end-page").value = currentPreviewPage;
     }
 
-    /**********************************************************************
-     * 8) Text extraction and parsing
-     **********************************************************************/
-    const TocService = (function(){
-      function groupItemsIntoLines(items) {
-        const sorted = [...items].sort((a, b) => {
-          const dy = a.y - b.y;
-          if (Math.abs(dy) > 2) return dy;
-          return a.x - b.x;
-        });
-
-        const lines = [];
-        let current = null;
-
-        const pushLine = () => {
-          if (!current || !current.items.length) return;
-          current.items.sort((a, b) => a.x - b.x);
-          lines.push(current);
-        };
-
-        for (const it of sorted) {
-          const tol = Math.max(2.5, (it.h || 0) * 0.7);
-          if (!current) {
-            current = { y: it.y, h: it.h || 0, items: [it] };
-            continue;
-          }
-          const yDiff = Math.abs(it.y - current.y);
-          const lineTol = Math.max(tol, Math.max(2.5, (current.h || 0) * 0.7));
-          if (yDiff <= lineTol) {
-            current.items.push(it);
-            current.y = (current.y * (current.items.length - 1) + it.y) / current.items.length;
-            current.h = Math.max(current.h || 0, it.h || 0);
-          } else {
-            pushLine();
-            current = { y: it.y, h: it.h || 0, items: [it] };
-          }
-        }
-        pushLine();
-        return lines;
-      }
-
-      function assembleLineTextFromItems(items) {
-        let out = "";
-        let prev = null;
-
-        for (const it of items) {
-          const chunk = String(it.str).replace(/\s+/g, " ").trim();
-          if (!chunk) continue;
-          if (!prev) {
-            out += chunk;
-            prev = it;
-            continue;
-          }
-          const prevEndX = (prev.x || 0) + (prev.w || 0);
-          const gap = (it.x || 0) - prevEndX;
-          const prevCharW = (prev.w && prev.str) ? (prev.w / Math.max(prev.str.length, 1)) : 0;
-          const curCharW = (it.w && it.str) ? (it.w / Math.max(it.str.length, 1)) : 0;
-          const charW = Math.max(1.5, prevCharW || 0, curCharW || 0);
-          if (gap > charW * 0.9) out += " ";
-          out += chunk;
-          prev = it;
-        }
-        return out.trim();
-      }
-
-      function splitColumns(lines, viewport) {
-        const w = viewport.width || 1;
-        const starts = lines
-          .map(ln => {
-            const minX = ln.items.length ? Math.min(...ln.items.map(i => i.x)) : 0;
-            return minX / w;
-          })
-          .filter(v => v > 0);
-
-        if (starts.length < 10) return [lines];
-
-        const left = starts.filter(v => v < 0.45).length / starts.length;
-        const right = starts.filter(v => v > 0.55).length / starts.length;
-
-        if (left > 0.25 && right > 0.25) {
-          const mid = 0.5;
-          const a = [];
-          const b = [];
-          for (const ln of lines) {
-            const minX = ln.items.length ? Math.min(...ln.items.map(i => i.x)) : 0;
-            const pct = minX / w;
-            if (pct < mid) a.push(ln);
-            else b.push(ln);
-          }
-          return [a, b].filter(col => col.length);
-        }
-
-        return [lines];
-      }
-
-      function splitLineIntoSegmentsByBigGap(lineItems, viewport) {
-        const w = viewport.width || 1;
-        const items = [...lineItems].sort((a, b) => a.x - b.x);
-
-        if (items.length <= 1) return [{ items }];
-
-        const bigGap = Math.max(60, w * 0.12);
-
-        const segments = [];
-        let seg = [items[0]];
-
-        for (let i = 1; i < items.length; i++) {
-          const prev = seg[seg.length - 1];
-          const prevEnd = (prev.x || 0) + (prev.w || 0);
-          const gap = (items[i].x || 0) - prevEnd;
-
-          if (gap > bigGap) {
-            segments.push({ items: seg });
-            seg = [items[i]];
-          } else {
-            seg.push(items[i]);
-          }
-        }
-
-        if (seg.length) segments.push({ items: seg });
-        return segments;
-      }
-
-      async function extractRawLinesFromPdfRange(startPage, endPage, statusCb) {
-        const rawLines = [];
-
-        for (let p = startPage; p <= endPage; p++) {
-          if (statusCb) statusCb("Extracting text from page " + p + " of " + endPage + "...");
-
-          const { items, viewport } = await PdfService.getTextItemsWithViewport(p, 1);
-          if (!items.length) {
-            rawLines.push("");
-            continue;
-          }
-
-          const hasAnyEol = items.some(it => it.hasEOL);
-          let baseLines = [];
-
-          if (hasAnyEol) {
-            let cur = [];
-            for (const it of items) {
-              cur.push(it);
-              if (it.hasEOL) {
-                baseLines.push({ items: cur });
-                cur = [];
-              }
-            }
-            if (cur.length) baseLines.push({ items: cur });
-          } else {
-            baseLines = groupItemsIntoLines(items);
-          }
-
-          for (const ln of baseLines) {
-            const segments = splitLineIntoSegmentsByBigGap(ln.items, viewport);
-            for (const seg of segments) {
-              rawLines.push(stripNoise(assembleLineTextFromItems(seg.items)));
-            }
-          }
-
-          rawLines.push("");
-        }
-
-        return rawLines.join("\n").trim();
-      }
-
-      function detectMaxRoman(entries) {
-        let max = 0;
-        for (const e of entries || []) {
-          const v = romanToInt(e.page);
-          if (Number.isFinite(v)) max = Math.max(max, v);
-        }
-        return max;
-      }
-
-      function findMainContentStartFromEntries(entries) {
-        for (const e of entries || []) {
-          const foldedTitle = foldText(e.title || "");
-          const stripped = foldedTitle.replace(/^(chapter|capitulo|capitolo|chapitre|kapitel|parte|part|teil|section|seccion)\s+\d+\s+/i, "");
-
-          const matchExact = MAIN_CONTENT_HEADINGS.has(stripped) || MAIN_CONTENT_HEADINGS.has(foldedTitle);
-          const matchPrefix = Array.from(MAIN_CONTENT_HEADINGS).some(h => stripped.startsWith(h + " ") || foldedTitle.startsWith(h + " "));
-
-          if (matchExact || matchPrefix) {
-            const idx = pageTokenToPdfIndex(e.page);
-            if (idx !== null) return idx + 1;
-          }
-        }
-        return null;
-      }
-
-      return {
-        extractRawLinesFromPdfRange,
-        detectMaxRoman,
-        findMainContentStartFromEntries,
-        groupItemsIntoLines,
-        assembleLineTextFromItems,
-        splitColumns
-      };
-    })();
-
-    /**********************************************************************
-     * 9) OCR service
-     **********************************************************************/
-    const OcrService = (function(){
-      async function ensureScheduler(langsArray, oem, statusCb) {
-        const langStr = (langsArray || []).join("+");
-        const langsKey = langStr;
-        const desiredOem = Number.isFinite(oem) ? oem : 1;
-
-        if (AppState.ocr.scheduler && AppState.ocr.lastLangsKey === langsKey && AppState.ocr.lastOem === desiredOem) {
-          return AppState.ocr.scheduler;
-        }
-
-        if (AppState.ocr.scheduler) {
-          try { await AppState.ocr.scheduler.terminate(); } catch (e) {}
-        }
-        AppState.ocr.scheduler = null;
-        AppState.ocr.workers = [];
-
-        const { createWorker, createScheduler } = Tesseract;
-        const scheduler = createScheduler();
-
-        const workerCount = Math.min(2, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
-
-        for (let i = 0; i < workerCount; i++) {
-          if (statusCb) statusCb("Initializing OCR worker " + (i + 1) + " of " + workerCount + "...");
-          const worker = await createWorker(langStr, desiredOem, {
-            logger: (m) => {
-              if (statusCb && m && m.status === "recognizing text") {
-                statusCb("OCR progress: " + Math.round((m.progress || 0) * 100) + "%");
-              }
-            }
-          });
-          scheduler.addWorker(worker);
-          AppState.ocr.workers.push(worker);
-        }
-
-        AppState.ocr.scheduler = scheduler;
-        AppState.ocr.lastLangsKey = langsKey;
-        AppState.ocr.lastOem = desiredOem;
-        return scheduler;
-      }
-
-      function toGrayscaleAndContrast(imageData) {
-        const d = imageData.data;
-        let min = 255, max = 0;
-        for (let i = 0; i < d.length; i += 4) {
-          const g = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
-          const gi = g | 0;
-          if (gi < min) min = gi;
-          if (gi > max) max = gi;
-          d[i] = d[i + 1] = d[i + 2] = gi;
-        }
-        const range = Math.max(1, max - min);
-        for (let i = 0; i < d.length; i += 4) {
-          const g = d[i];
-          const stretched = ((g - min) * 255) / range;
-          d[i] = d[i + 1] = d[i + 2] = stretched | 0;
-        }
-        return imageData;
-      }
-
-      function otsuThreshold(grayImageData) {
-        const d = grayImageData.data;
-        const hist = new Array(256).fill(0);
-        let total = 0;
-
-        for (let i = 0; i < d.length; i += 4) {
-          hist[d[i]]++;
-          total++;
-        }
-
-        let sum = 0;
-        for (let i = 0; i < 256; i++) sum += i * hist[i];
-
-        let sumB = 0;
-        let wB = 0;
-        let wF = 0;
-        let varMax = 0;
-        let threshold = 128;
-
-        for (let t = 0; t < 256; t++) {
-          wB += hist[t];
-          if (wB === 0) continue;
-          wF = total - wB;
-          if (wF === 0) break;
-
-          sumB += t * hist[t];
-          const mB = sumB / wB;
-          const mF = (sum - sumB) / wF;
-
-          const varBetween = wB * wF * (mB - mF) * (mB - mF);
-          if (varBetween > varMax) {
-            varMax = varBetween;
-            threshold = t;
-          }
-        }
-        return threshold;
-      }
-
-      function binarize(grayImageData) {
-        const d = grayImageData.data;
-        const t = otsuThreshold(grayImageData);
-        let sum = 0;
-        for (let i = 0; i < d.length; i += 4) sum += d[i];
-        const avg = sum / (d.length / 4);
-        const invert = avg < 128;
-
-        for (let i = 0; i < d.length; i += 4) {
-          const g = d[i];
-          let v = g > t ? 255 : 0;
-          if (invert) v = 255 - v;
-          d[i] = d[i + 1] = d[i + 2] = v;
-        }
-        return grayImageData;
-      }
-
-      function autoCropToInk(canvas, pad) {
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        const { width, height } = canvas;
-        const img = ctx.getImageData(0, 0, width, height);
-        const d = img.data;
-
-        let minX = width, minY = height, maxX = 0, maxY = 0;
-        let found = false;
-
-        for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-            const i = (y * width + x) * 4;
-            const v = d[i];
-            if (v < 250) {
-              found = true;
-              if (x < minX) minX = x;
-              if (y < minY) minY = y;
-              if (x > maxX) maxX = x;
-              if (y > maxY) maxY = y;
-            }
-          }
-        }
-
-        if (!found) return canvas;
-
-        const p = Math.max(0, pad || 18);
-        minX = Math.max(0, minX - p);
-        minY = Math.max(0, minY - p);
-        maxX = Math.min(width - 1, maxX + p);
-        maxY = Math.min(height - 1, maxY + p);
-
-        const cropW = Math.max(1, maxX - minX + 1);
-        const cropH = Math.max(1, maxY - minY + 1);
-
-        const out = document.createElement("canvas");
-        out.width = cropW;
-        out.height = cropH;
-        const outCtx = out.getContext("2d", { willReadFrequently: true });
-        outCtx.putImageData(ctx.getImageData(minX, minY, cropW, cropH), 0, 0);
-        return out;
-      }
-
-      function preprocessCanvas(canvas, mode) {
-        if (!canvas) return canvas;
-        if (mode === "none") return canvas;
-
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-        let out = toGrayscaleAndContrast(img);
-        if (mode === "adaptive") out = binarize(out);
-
-        ctx.putImageData(out, 0, 0);
-
-        if (mode === "adaptive") return autoCropToInk(canvas, 18);
-        return canvas;
-      }
-
-      async function ocrPdfRange(startPage, endPage, options, statusCb) {
-        const langs = String(options.langs || "eng")
-          .split(",")
-          .map(s => s.trim())
-          .filter(Boolean);
-
-        const psm = 6;
-        const dpi = 300;
-        const preprocess = options.preprocess || "adaptive";
-
-        const scheduler = await ensureScheduler(langs, 1, statusCb);
-
-        for (const w of AppState.ocr.workers) {
-          await w.setParameters({
-            tessedit_pageseg_mode: psm,
-            preserve_interword_spaces: "1",
-            user_defined_dpi: String(dpi)
-          });
-        }
-
-        let fullText = "";
-        for (let p = startPage; p <= endPage; p++) {
-          if (statusCb) statusCb("Rendering page " + p + " at " + dpi + " DPI...");
-          let canvas = await PdfService.renderPageToCanvas(p, dpi);
-          canvas = preprocessCanvas(canvas, preprocess);
-
-          if (statusCb) statusCb("OCR page " + p + " of " + endPage + "...");
-          const result = await scheduler.addJob("recognize", canvas, {});
-          const text = (result && result.data && result.data.text) ? result.data.text : "";
-          fullText += text + "\n";
-          
-          // Yield to UI
-          await new Promise(r => setTimeout(r, 0));
-        }
-        return fullText;
-      }
-
-      async function sniffTocInScannedPdf(startPage, endPage) {
-        const scheduler = await ensureScheduler(["eng"], 1, null);
-        for (const w of AppState.ocr.workers) {
-          await w.setParameters({ tessedit_pageseg_mode: 1 });
-        }
-
-        for (let p = startPage; p <= endPage; p++) {
-          const canvas = await PdfService.renderPageToCanvas(p, 100);
-          const res = await scheduler.addJob("recognize", canvas);
-          const txt = (res.data.text || "").toLowerCase();
-          if (TOC_KEYWORD_PATTERN.test(txt)) {
-            return p;
-          }
-        }
-        return null;
-      }
-
-      async function terminate() {
-        if (AppState.ocr.scheduler) {
-          try { await AppState.ocr.scheduler.terminate(); } catch (e) {}
-        }
-        AppState.ocr.scheduler = null;
-        AppState.ocr.workers = [];
-      }
-
-      return { ocrPdfRange, sniffTocInScannedPdf, terminate };
-    })();
-
-    window.addEventListener("pagehide", () => {
-      OcrService.terminate();
-    });
-
-    /**********************************************************************
-     * 10) UI state: chapters list rendering and validation
-     **********************************************************************/
-    function resetChaptersAndHistory() {
-      AppState.toc.chapters = [];
-      El.chapterList.innerHTML = "";
-      AppState.history.stack = [];
-      AppState.history.index = -1;
-      updateHistoryButtons();
-      saveStateToHistory();
-    }
-
-    function setChapters(chapters, opts) {
-      const saveHistory = !opts || opts.saveHistory !== false;
-      AppState.toc.chapters = (chapters || []).map(c => ({
-        title: c.title || "",
-        page: c.page || ""
-      }));
-      renderChapterList();
-      if (saveHistory) saveStateToHistory();
-    }
-
-    function renderChapterList() {
-      El.chapterList.innerHTML = "";
-      for (const ch of (AppState.toc.chapters || [])) addChapterRow(ch.title, ch.page, { saveHistory: false });
-      validateAllChapters();
-    }
-
-    function addChapterRow(title, page, opts) {
+    // --- Chapter list ---
+    function addChapterWithData(title, page) {
       const row = document.createElement("div");
       row.className = "chapter-row";
 
@@ -1488,62 +488,30 @@
 
       const pageInput = document.createElement("input");
       pageInput.type = "text";
-      pageInput.inputMode = "text";
       pageInput.className = "chapter-page";
       pageInput.value = page || "";
-      pageInput.placeholder = "Pg";
+      pageInput.placeholder = "Pg (e.g., 12, iv, pdf:7)";
 
-      const deleteBtn = document.createElement("button");
-      deleteBtn.className = "danger";
-      deleteBtn.style.padding = "6px 10px";
-      deleteBtn.textContent = "✕";
+      const del = document.createElement("button");
+      del.className = "del-btn";
+      del.textContent = "×";
+      del.onclick = () => row.remove();
 
-      const validationMsg = document.createElement("div");
-      validationMsg.className = "validation-msg";
+      const msg = document.createElement("div");
+      msg.className = "validation-msg";
 
       row.appendChild(handle);
       row.appendChild(titleInput);
       row.appendChild(pageInput);
-      row.appendChild(deleteBtn);
-      row.appendChild(validationMsg);
+      row.appendChild(del);
+      row.appendChild(msg);
 
-      El.chapterList.appendChild(row);
-
-      function syncToState(saveHist) {
-        const rows = Array.from(El.chapterList.querySelectorAll(".chapter-row"));
-        AppState.toc.chapters = rows.map(r => ({
-          title: r.querySelector(".chapter-title").value,
-          page: r.querySelector(".chapter-page").value
-        }));
-        if (saveHist) saveStateToHistory();
-      }
-
-      titleInput.addEventListener("change", () => {
-        if (!AppState.history.isUndoRedo && !AppState.history.isBulkEdit) syncToState(true);
-      });
-
-      pageInput.addEventListener("input", () => validateChapterRow(row));
-      pageInput.addEventListener("change", () => {
-        validateChapterRow(row);
-        if (!AppState.history.isUndoRedo && !AppState.history.isBulkEdit) syncToState(true);
-      });
-
-      deleteBtn.onclick = () => {
-        row.remove();
-        syncToState(true);
-      };
-
+      // Drag reorder (no undo/redo, just reorder)
       handle.addEventListener("dragstart", (e) => {
         row.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", "");
       });
-      handle.addEventListener("dragend", () => {
-        row.classList.remove("dragging");
-        if (!AppState.history.isUndoRedo && !AppState.history.isBulkEdit) {
-          syncToState(true);
-        }
-      });
+      handle.addEventListener("dragend", () => row.classList.remove("dragging"));
       row.addEventListener("dragover", (e) => {
         e.preventDefault();
         const dragging = document.querySelector(".dragging");
@@ -1555,1060 +523,317 @@
         }
       });
 
-      if (!opts || opts.saveHistory !== false) syncToState(true);
+      pageInput.addEventListener("input", () => validateChapterRow(row));
+      pageInput.addEventListener("change", () => validateChapterRow(row));
+
+      chapterListEl.appendChild(row);
       validateChapterRow(row);
     }
 
+    function resetChapters() {
+      chapterListEl.innerHTML = "";
+    }
+
     function addChapter() {
-      addChapterRow("", "", { saveHistory: true });
-      const rows = El.chapterList.querySelectorAll(".chapter-row");
-      const last = rows[rows.length - 1];
-      if (last) last.querySelector(".chapter-title").focus();
+      addChapterWithData("", "");
+      const rows = chapterListEl.querySelectorAll(".chapter-row");
+      const lastRow = rows[rows.length - 1];
+      if (lastRow) lastRow.querySelector(".chapter-title").focus();
+    }
+
+    function sortChapters() {
+      const rows = Array.from(chapterListEl.children);
+      rows.sort((a, b) => getPageFromRow(a) - getPageFromRow(b));
+      chapterListEl.innerHTML = "";
+      rows.forEach(r => chapterListEl.appendChild(r));
+    }
+
+    // --- Page token mapping (restored from original) ---
+    function isRomanNumeralToken(token) {
+      return /^[ivxlcdm]+$/i.test(token) && isNaN(token);
+    }
+
+    function normalizePageToken(token) {
+      let t = (token || "").trim();
+      if (!t) return "";
+
+      t = t.replace(/\b(page|pages|pagina|paginas|seite)\b/gi, "");
+      t = t.replace(/\bp\.?\s*/gi, "");
+      t = t.replace(/\bpp\.?\s*/gi, "");
+
+      t = t.replace(/^[\s.)\],:;\-–—([\[]+/, "");
+      t = t.replace(/[\s.)\],:;\-–—\]\[]+$/, "");
+
+      t = t.trim();
+
+      if (/^\d+$/.test(t)) return t;
+      if (/^[ivxlcdm]+$/i.test(t)) return t;
+
+      const numMatch = t.match(/(\d+)/);
+      if (numMatch) return numMatch[1];
+
+      const romanMatch = t.match(/\b([ivxlcdm]+)\b/i);
+      if (romanMatch) return romanMatch[1];
+
+      return t;
+    }
+
+    function safeParseInt(x) {
+      const n = parseInt(String(x).trim(), 10);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
+    function romanToInt(roman) {
+      const s = String(roman || "").toLowerCase();
+      if (!/^[ivxlcdm]+$/.test(s)) return NaN;
+
+      const map = { i:1, v:5, x:10, l:50, c:100, d:500, m:1000 };
+      let total = 0;
+      let prev = 0;
+
+      for (let i = s.length - 1; i >= 0; i--) {
+        const val = map[s[i]] || 0;
+        if (val < prev) total -= val;
+        else { total += val; prev = val; }
+      }
+      return total > 0 ? total : NaN;
+    }
+
+    function pageTokenToPdfIndex(token, options = {}) {
+      const { allowRawPdfPage = false } = options;
+      const raw = String(token || "").trim();
+
+      const m = raw.match(/^pdf\s*:\s*(\d+)$/i);
+      if (m) {
+        const pdfPage = parseInt(m[1], 10);
+        if (Number.isFinite(pdfPage) && pdfPage >= 1 && pdfPage <= totalPages) {
+          return { index: pdfPage - 1, isRawPdfPage: true };
+        }
+        return null;
+      }
+
+      const t = normalizePageToken(token).toLowerCase();
+      if (!t) return null;
+
+      const firstPageNum = safeParseInt($("first-page-number").value) || 1;
+      const contentStartPdf = safeParseInt(pageOffsetInput.value) || 1;
+
+      if (/^\d+$/.test(t)) {
+        const pageNum = safeParseInt(t);
+        if (!Number.isFinite(pageNum) || pageNum < 1) return null;
+
+        const pdfIndex = (pageNum - firstPageNum) + (contentStartPdf - 1);
+
+        if (pdfIndex >= 0 && pdfIndex < totalPages) return pdfIndex;
+
+        const rawPdfIndex = pageNum - 1;
+        if (rawPdfIndex >= 0 && rawPdfIndex < totalPages) return { index: rawPdfIndex, isRawPdfPage: true };
+
+        return null;
+      }
+
+      if (isRomanNumeralToken(t)) {
+        if (pageLabelIndexByLabel && pageLabelIndexByLabel.has(t)) {
+          return pageLabelIndexByLabel.get(t);
+        }
+
+        const rv = romanToInt(t);
+
+        if (Number.isFinite(rv) && rv > 0 && detectedMaxRoman > 0 && contentStartPdf > 1) {
+          const pdfIndex = contentStartPdf - detectedMaxRoman + rv - 2;
+          return (pdfIndex >= 0 && pdfIndex < totalPages) ? pdfIndex : null;
+        }
+
+        if (Number.isFinite(rv) && rv > 0 && rv <= totalPages) return rv - 1;
+      }
+
+      return null;
+    }
+
+    function getPdfIndexValue(result) {
+      if (result === null) return null;
+      if (typeof result === "number") return result;
+      if (typeof result === "object" && result.index !== undefined) return result.index;
+      return null;
+    }
+
+    function getPageFromRow(row) {
+      const token = row.querySelector(".chapter-page").value.trim();
+      const result = pageTokenToPdfIndex(token);
+      const idx = getPdfIndexValue(result);
+      return idx === null ? 999999 : idx;
     }
 
     function validateChapterRow(row) {
-      if (!AppState.pdf.pageCount) return true;
-
       const pageInput = row.querySelector(".chapter-page");
-      const token = String(pageInput.value || "").trim();
+      const token = (pageInput.value || "").trim();
       const msgEl = row.querySelector(".validation-msg");
 
-      if (!token) {
+      if (!totalPages) {
         row.classList.remove("invalid");
+        row.classList.remove("warning");
         if (msgEl) msgEl.textContent = "";
         return true;
       }
 
-      const idx = pageTokenToPdfIndex(token);
-      if (idx === null) {
+      if (!token) {
+        row.classList.remove("invalid");
+        row.classList.remove("warning");
+        if (msgEl) msgEl.textContent = "";
+        return true;
+      }
+
+      const result = pageTokenToPdfIndex(token);
+      const pdfIndex = getPdfIndexValue(result);
+
+      if (pdfIndex === null) {
         row.classList.add("invalid");
-        if (msgEl) msgEl.textContent = "Cannot map \"" + token + "\" to a PDF page.";
+        row.classList.remove("warning");
+        if (msgEl) msgEl.textContent = `Cannot map "${token}" to a PDF page.`;
         return false;
+      }
+
+      if (typeof result === "object" && result.isRawPdfPage) {
+        row.classList.remove("invalid");
+        row.classList.add("warning");
+        if (msgEl) msgEl.textContent = `Using as PDF page ${pdfIndex + 1} directly.`;
+        msgEl.style.color = "#92400e";
+        return true;
       }
 
       row.classList.remove("invalid");
-      if (msgEl) msgEl.textContent = "";
+      row.classList.remove("warning");
+      if (msgEl) {
+        msgEl.textContent = "";
+        msgEl.style.color = "";
+      }
       return true;
     }
 
-    function validateAllChapters() {
-      let invalid = 0;
-      const rows = El.chapterList.querySelectorAll(".chapter-row");
-      rows.forEach(r => { if (!validateChapterRow(r)) invalid++; });
-      return invalid;
-    }
+    // --- AI Analyze ---
+    async function aiAnalyzePdf() {
+      const base = getBackendBaseUrl();
+      if (!base) { showAiStatus("Backend URL is required.", "error"); return; }
 
-    function getPageFromRow(row) {
-      const token = String(row.querySelector(".chapter-page").value || "").trim();
-      const idx = pageTokenToPdfIndex(token);
-      return idx === null ? 999999 : idx;
-    }
+      const health = await testBackend();
+      if (!health.ok) {
+        showAiStatus("Cannot reach backend. Check the URL and that the service is running.", "error");
+        return;
+      }
+      if (!health.gemini_available) {
+        showAiStatus("Backend reachable but AI unavailable. Configure API key on backend.", "warning");
+        return;
+      }
 
-    function sortChaptersByPage() {
-      const rows = Array.from(El.chapterList.children);
-      rows.sort((a, b) => getPageFromRow(a) - getPageFromRow(b));
-      El.chapterList.innerHTML = "";
-      rows.forEach(r => El.chapterList.appendChild(r));
-      const chapters = rows.map(r => ({
-        title: r.querySelector(".chapter-title").value,
-        page: r.querySelector(".chapter-page").value
-      }));
-      setChapters(chapters, { saveHistory: true });
-    }
+      const form = new FormData();
+      form.append("max_pages", String(Number($("ai-max-pages").value || 40)));
 
-    /**********************************************************************
-     * 11) ROBUST ToC detection (1900s layouts through modern linked PDFs)
-     **********************************************************************/
-
-    // Extended ToC title variants
-    const TOC_TITLE_PHRASES = [
-      "table of contents", "contents", "detailed contents",
-      "summary of contents", "contents at a glance",
-      "contents of", "contents of volume", "contents of book", "contents of part",
-      "índice", "indice", "contenido", "tabla de contenido",
-      "sommaire", "table des matières",
-      "inhalt", "inhaltsverzeichnis",
-      "sommario", "indice dei contenuti",
-      "목차", "目录", "目錄"
-    ];
-
-    // Column headers often seen in ToCs
-    const TOC_COLUMN_HEADER_PHRASES = [
-      "page", "pages", "chapter", "chapters", "section", "sections",
-      "part", "parts", "title", "titles",
-      "pagina", "página", "paginas", "páginas",
-      "seite", "seiten", "页", "頁", "쪽", "ページ"
-    ];
-
-    // Pages that come right after ToC but should stop ToC parsing
-    const NON_TOC_PAGE_HEADERS = [
-      "list of figures", "list of tables", "list of illustrations",
-      "illustrations", "plates", "maps", "abbreviations",
-      "glossary", "index", "bibliography", "references",
-      "acknowledgements", "acknowledgments", "about the author"
-    ];
-
-    // Use the robust matcher instead of regex
-    const hasTocTitleText = makePhraseMatcher(TOC_TITLE_PHRASES);
-    const hasColHdrText = makePhraseMatcher(TOC_COLUMN_HEADER_PHRASES);
-    const hasNonTocHdrText = makePhraseMatcher(NON_TOC_PAGE_HEADERS);
-
-    // Build lines from items (same as extractor)
-    function buildLinesFromItems(items) {
-      const hasAnyEol = items.some(it => it.hasEOL);
-      let lines = [];
-
-      if (hasAnyEol) {
-        let cur = [];
-        for (const it of items) {
-          cur.push(it);
-          if (it.hasEOL) {
-            cur.sort((a, b) => a.x - b.x);
-            lines.push({ items: cur });
-            cur = [];
-          }
-        }
-        if (cur.length) {
-          cur.sort((a, b) => a.x - b.x);
-          lines.push({ items: cur });
-        }
+      const urlVal = ($("pdf-url").value || "").trim();
+      if (pdfBytes) {
+        const blob = new Blob([pdfBytes], { type: "application/pdf" });
+        const filename = ($("pdf-file").files?.[0]?.name) || "document.pdf";
+        form.append("pdf_file", blob, filename);
+      } else if (urlVal) {
+        form.append("pdf_url", urlVal);
       } else {
-        lines = TocService.groupItemsIntoLines(items);
-      }
-      return lines;
-    }
-
-    // Robust header detection using relative Y clustering
-    function getHeaderTextRaw(lines) {
-      if (!lines.length) return "";
-      // Find visual top (minY)
-      const lineYs = lines.map(ln => Math.min(...(ln.items || []).map(i => i.y ?? 1e9)));
-      const minY = Math.min(...lineYs);
-
-      // Filter lines within 120px of the top cluster
-      const headerLines = lines.filter((ln, idx) => {
-        const y = lineYs[idx];
-        return (y - minY) <= 120; 
-      });
-
-      const raw = headerLines
-        .slice(0, 8)
-        .map(ln => TocService.assembleLineTextFromItems(ln.items || []))
-        .join(" ");
-
-      return raw;
-    }
-
-    // Detect page-last and page-first formats
-    const PAGE_LAST_RE = /(?:\s+)(\d+|[ivxlcdm]+)(?:\s*[.)\]]\s*)?$/i;
-    const PAGE_FIRST_RE = /^(\d+|[ivxlcdm]+)(?:\s*[.)\]]\s*)?\s+\p{L}/iu;
-
-    function getRightmostLocatorXRatio(lineItems, viewportWidth) {
-      if (!lineItems || !lineItems.length) return null;
-      const w = viewportWidth || 1;
-
-      let best = null;
-      for (const it of lineItems) {
-        const tok = normalizePageToken(it.str || "");
-        if (!tok) continue;
-        if (!isPageNumberToken(tok)) continue;
-
-        if (!best || (it.x || 0) > (best.x || 0)) best = it;
+        showAiStatus("Load a PDF file or URL first.", "error");
+        return;
       }
 
-      if (!best) return null;
-      const cx = (best.x || 0) + ((best.w || 0) * 0.5);
-      return cx / w;
-    }
-
-    // Cluster X ratios to find locator columns (works for multi-column ToCs)
-    function clusterXRatios(xRatios) {
-      const xs = (xRatios || []).filter(x => Number.isFinite(x) && x >= 0 && x <= 1);
-      if (xs.length < 4) return [];
-
-      const binW = 0.05;
-      const bins = new Map();
-      for (const x of xs) {
-        const b = Math.max(0, Math.min(19, Math.floor(x / binW)));
-        bins.set(b, (bins.get(b) || 0) + 1);
-      }
-
-      const keys = Array.from(bins.keys()).sort((a, b) => a - b);
-      const runs = [];
-      let run = null;
-
-      for (const k of keys) {
-        const c = bins.get(k) || 0;
-        if (!run) {
-          run = { start: k, end: k, count: c };
-          continue;
+      showAiStatus("Running AI analysis…", "processing");
+      try {
+        const res = await fetch(`${base}/analyze-pdf-ai`, { method:"POST", body: form });
+        if (!res.ok) {
+          const msg = await res.text();
+          showAiStatus(`AI analysis failed (${res.status}): ${escapeHtml(msg)}`, "error");
+          return;
         }
-        if (k === run.end + 1) {
-          run.end = k;
-          run.count += c;
-        } else {
-          runs.push(run);
-          run = { start: k, end: k, count: c };
-        }
-      }
-      if (run) runs.push(run);
 
-      const clusters = [];
-      for (const r of runs) {
-        if (r.count < 4) continue;
-        const lo = r.start * binW;
-        const hi = (r.end + 1) * binW;
-        const inRun = xs.filter(x => x >= lo && x < hi).sort((a, b) => a - b);
-        const spread = inRun.length ? (inRun[inRun.length - 1] - inRun[0]) : 1;
-        clusters.push({ count: r.count, lo, hi, spread, center: (lo + hi) / 2 });
-      }
+        const data = await res.json();
 
-      clusters.sort((a, b) => (b.count - a.count) || (a.spread - b.spread));
-      return clusters.slice(0, 3);
+        if (data.toc_start_page) $("toc-start-page").value = data.toc_start_page;
+        if (data.toc_end_page) $("toc-end-page").value = data.toc_end_page;
+
+        if (data.content_start_pdf_page) $("page-offset").value = data.content_start_pdf_page;
+
+        const firstNum = Number(data.first_page_number || 1);
+        $("custom-first-page-toggle").checked = firstNum !== 1;
+        $("first-page-number").value = String(firstNum);
+        $("custom-first-page-section").style.display = $("custom-first-page-toggle").checked ? "block" : "none";
+
+        resetChapters();
+        const entries = data.entries || [];
+        if (!entries.length) addChapterWithData("", "");
+        else entries.forEach(e => addChapterWithData(e.title || "", String(e.page || "")));
+
+        const conf = data.confidence ? `<div><b>Confidence:</b> ${escapeHtml(data.confidence)}</div>` : "";
+        const notes = data.notes ? `<div style="margin-top:6px;"><b>Notes:</b> ${escapeHtml(data.notes)}</div>` : "";
+        showAiStatus(`✅ AI analysis complete.${conf}${notes}`, "success");
+      } catch {
+        showAiStatus("AI analysis failed due to a network error.", "error");
+      }
     }
 
-    // Indentation richness (hierarchical ToCs have multiple indent levels)
-    function indentationRichness(lines, viewportWidth) {
-      const w = viewportWidth || 1;
-      const buckets = new Set();
+    // --- PDF Generation (bookmark logic restored from original index) ---
+    async function processPdf() {
+      if (!pdfBytes) return alert("No PDF loaded");
 
-      for (const ln of (lines || [])) {
-        const xs = (ln.items || []).map(i => i.x || 0);
-        if (!xs.length) continue;
-        const minX = Math.min(...xs) / w;
-        const b = Math.round(minX / 0.03);
-        buckets.add(b);
-      }
-      return buckets.size;
-    }
+      const rows = Array.from(chapterListEl.querySelectorAll(".chapter-row"));
+      let lastPage = -Infinity;
+      let isUnsorted = false;
 
-    // Dot leaders in raw text (before stripNoise)
-    function containsDotLeadersRaw(rawText) {
-      return /(\.{4,}|(\.\s){4,}|[·•]{3,}|_{4,})/.test(rawText || "");
-    }
-
-    async function scoreTocPageRobust(pageNum) {
-      const { items, viewport } = await PdfService.getTextItemsWithViewport(pageNum, 1);
-
-      // Link density can identify modern clickable ToCs
-      const linkStats = await PdfService.getLinkStats(pageNum);
-
-      if (!items.length) {
-        const scoreFromLinks = Math.min(12, (linkStats.internal || 0) * 0.8);
-        return {
-          pageNum,
-          score: scoreFromLinks,
-          isEmpty: true,
-          hasTocTitle: false,
-          hasNonTocHeader: false,
-          locatorLines: 0,
-          linkInternal: linkStats.internal || 0
-        };
-      }
-
-      const lines = buildLinesFromItems(items);
-
-      // Build raw and clean text
-      const rawLines = lines.map(ln => TocService.assembleLineTextFromItems(ln.items || []));
-      const rawText = rawLines.join("\n");
-      const cleanLines = rawLines.map(l => stripNoise(l)).map(l => l.trim()).filter(Boolean);
-
-      // Header signals (using robust matchers)
-      const headerRaw = getHeaderTextRaw(lines);
-      const hasTocTitle = hasTocTitleText(headerRaw);
-      const hasColumnHeader = hasColHdrText(headerRaw);
-      const hasNonTocHeader = hasNonTocHdrText(headerRaw) && !hasTocTitle;
-
-      // Locator line counts (page-last and page-first formats)
-      let pageLast = 0, pageFirst = 0;
-      const locatorXRatios = [];
-
-      for (const ln of lines) {
-        const t = stripNoise(TocService.assembleLineTextFromItems(ln.items || []));
-        if (!t) continue;
-
-        if (PAGE_LAST_RE.test(t)) {
-          pageLast++;
-          const xr = getRightmostLocatorXRatio(ln.items || [], viewport.width);
-          if (xr !== null) locatorXRatios.push(xr);
-          continue;
-        }
-        if (PAGE_FIRST_RE.test(t)) {
-          pageFirst++;
-          continue;
-        }
-      }
-
-      const locatorLines = pageLast + pageFirst;
-
-      // Alignment clusters for locator columns
-      const clusters = clusterXRatios(locatorXRatios);
-      let alignScore = 0;
-      for (const c of clusters) {
-        const tightness = Math.max(0, 0.08 - (c.spread || 0));
-        alignScore += Math.min(8, c.count * (tightness * 10));
-      }
-
-      // Dot leaders
-      const hasLeaders = containsDotLeadersRaw(rawText);
-
-      // Short line density vs prose
-      const avgLen = cleanLines.reduce((s, l) => s + l.length, 0) / Math.max(1, cleanLines.length);
-      const longLines = cleanLines.filter(l => l.length > Math.max(90, avgLen * 1.4)).length;
-      const proseHeavy = (cleanLines.length >= 8) && (longLines / Math.max(1, cleanLines.length) > 0.35) && locatorLines < 3;
-
-      // Indentation richness
-      const indentLevels = indentationRichness(lines, viewport.width);
-
-      // === Scoring ===
-      let score = 0;
-
-      if (hasTocTitle) score += 12;
-      if (hasColumnHeader) score += 4;
-      if (hasLeaders) score += 4;
-
-      score += pageLast * 0.9;
-      score += pageFirst * 0.7;
-      score += alignScore;
-
-      // Internal links: modern clickable ToCs
-      score += Math.min(10, (linkStats.internal || 0) * 0.7);
-
-      // Hierarchy signal
-      if (indentLevels >= 3 && cleanLines.length >= 10) score += 2;
-
-      // Penalties
-      if (hasNonTocHeader) score -= 10;
-      if (proseHeavy) score -= 8;
-
-      return {
-        pageNum,
-        score,
-        isEmpty: false,
-        hasTocTitle,
-        hasNonTocHeader,
-        locatorLines,
-        pageLast,
-        pageFirst,
-        alignClusters: clusters,
-        linkInternal: linkStats.internal || 0,
-        proseHeavy
-      };
-    }
-
-    // Kadane-style best contiguous segment finder
-    function findBestContiguousSegmentByScore(scoredPages, baseline) {
-      if (!scoredPages.length) return null;
-
-      const signals = scoredPages.map(s => ({
-        pageNum: s.pageNum,
-        signal: (s.score || 0) - baseline,
-        originalScore: s.score || 0,
-        hasTocTitle: !!s.hasTocTitle,
-        locatorLines: s.locatorLines || 0,
-        linkInternal: s.linkInternal || 0
-      }));
-
-      let maxSum = -Infinity;
-      let maxStart = 0;
-      let maxEnd = 0;
-
-      let currentSum = 0;
-      let currentStart = 0;
-
-      for (let i = 0; i < signals.length; i++) {
-        currentSum += signals[i].signal;
-
-        if (currentSum > maxSum) {
-          maxSum = currentSum;
-          maxStart = currentStart;
-          maxEnd = i;
-        }
-        if (currentSum < 0) {
-          currentSum = 0;
-          currentStart = i + 1;
-        }
-      }
-
-      if (maxSum <= 0) return null;
-
-      // Expand around title pages or strong locator density
-      while (maxStart > 0) {
-        const prev = signals[maxStart - 1];
-        if (prev.hasTocTitle || prev.locatorLines >= 4 || prev.linkInternal >= 6) maxStart--;
-        else break;
-      }
-      while (maxEnd < signals.length - 1) {
-        const next = signals[maxEnd + 1];
-        if (next.hasTocTitle || next.locatorLines >= 4 || next.linkInternal >= 6) maxEnd++;
-        else break;
-      }
-
-      return { start: signals[maxStart].pageNum, end: signals[maxEnd].pageNum, totalSignal: maxSum };
-    }
-
-    // Robust ToC range finder with better end detection
-    async function autoFindTocRangeRobust(scanStart, scanEnd, hardStopPage) {
-      const scores = [];
-      let emptyCount = 0;
-
-      const stopAt = Math.min(scanEnd, hardStopPage || scanEnd);
-
-      for (let p = scanStart; p <= stopAt; p++) {
-        const s = await scoreTocPageRobust(p);
-        scores.push(s);
-        if (s.isEmpty) emptyCount++;
-      }
-
-      // Mostly no embedded text, try OCR sniff
-      if (emptyCount > (stopAt - scanStart + 1) * 0.8) {
-        const foundPage = await OcrService.sniffTocInScannedPdf(scanStart, stopAt);
-        if (foundPage) return { start: foundPage, end: foundPage };
-        return null;
-      }
-
-      // Baseline as median score
-      const vals = scores.map(s => s.score).filter(v => Number.isFinite(v)).sort((a, b) => a - b);
-      const baseline = vals.length ? vals[Math.floor(vals.length / 2)] : 5;
-      const seg = findBestContiguousSegmentByScore(scores, Math.max(5, baseline));
-
-      // Prefer explicit ToC title page as start
-      let start = null;
-      for (const s of scores) {
-        if (s.hasTocTitle || (s.linkInternal >= 8 && s.score >= 6)) {
-          start = s.pageNum;
+      for (const row of rows) {
+        const idx = getPageFromRow(row);
+        if (idx === 999999) continue;
+        if (idx < lastPage) {
+          isUnsorted = true;
           break;
         }
-      }
-      if (!start && seg) start = seg.start;
-      if (!start) {
-        let best = scores[0];
-        for (const s of scores) if ((s.score || 0) > (best.score || 0)) best = s;
-        if (best && best.score >= 8) return { start: best.pageNum, end: best.pageNum };
-        return null;
+        lastPage = idx;
       }
 
-      // End detection: walk forward until 2 consecutive non-ToC-like pages
-      const TOC_LIKE_SCORE = 8;
-      let end = start;
-      let lowRun = 0;
-
-      const byPage = new Map(scores.map(s => [s.pageNum, s]));
-
-      for (let p = start; p <= stopAt; p++) {
-        const s = byPage.get(p) || { score: 0, locatorLines: 0, linkInternal: 0, hasNonTocHeader: false, hasTocTitle: false };
-
-        // Stop before "List of Figures" etc.
-        if (p !== start && s.hasNonTocHeader) break;
-
-        const tocLike =
-          (s.score >= TOC_LIKE_SCORE) ||
-          (s.hasTocTitle) ||
-          (s.locatorLines >= 5) ||
-          (s.linkInternal >= 8);
-
-        if (tocLike) {
-          end = p;
-          lowRun = 0;
-        } else {
-          lowRun++;
-          if (lowRun >= 2) break;
-        }
+      if (isUnsorted) {
+        const shouldSort = confirm("Chapters are not in page order. Sort them now before generating?\n\nClick OK to sort, or Cancel to proceed without sorting.");
+        if (shouldSort) sortChapters();
       }
 
-      // Soft include prior page if it's a title page overflow
-      while (start > scanStart) {
-        const prev = byPage.get(start - 1);
-        if (!prev) break;
-        if (prev.hasTocTitle) { start--; continue; }
-        if (prev.score >= TOC_LIKE_SCORE * 0.8 && !prev.proseHeavy) { start--; continue; }
-        break;
-      }
-
-      return { start, end };
-    }
-
-    async function getHeaderFooterNumberCandidates(pageNum) {
-      const page = await AppState.pdf.doc.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      const viewport = page.getViewport({ scale: 1 });
-      const h = viewport.height;
-
-      const isHeader = (y) => y < h * 0.15;
-      const isFooter = (y) => y > h * 0.85;
-
-      return (textContent.items || [])
-        .filter(item => item && item.transform && typeof item.str === "string")
-        .map(item => {
-          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-          const y = tx[5];
-          const str = item.str.trim().replace(/^[-[\]\s]+|[-[\]\s]+$/g, "");
-          return { y, str };
-        })
-        .filter(o => (isHeader(o.y) || isFooter(o.y)) && /^\d+$/.test(o.str))
-        .map(o => ({ val: parseInt(o.str, 10), y: o.y }));
-    }
-
-    async function autoDetectStructure() {
-      if (!AppState.pdf.doc) return;
-      if (AppState.ui.busy) return;
-      setBusy(true);
-
-      const statusEl = El.fileInfo;
-      const original = (statusEl.textContent || "").split(" | ")[0];
-      statusEl.textContent = original + " | 🔍 Scanning...";
-      statusEl.style.backgroundColor = "";
-
-      // Reset confidence
-      AppState.toc.confidence = 'none';
+      const btn = $("process-btn");
+      const status = $("status");
+      btn.disabled = true;
+      status.className = "status-box processing";
+      status.classList.remove("hidden");
+      status.textContent = "Generating PDF...";
 
       try {
-        const total = AppState.pdf.pageCount;
-        const maxScan = Math.min(50, total);
-
-        // 1. Check PDF outline for ToC entry
-        const outlineHint = await findTocFromOutline();
-        let tocFromOutline = null;
-        let contentStartFromOutline = null;
-        
-        if (outlineHint) {
-          if (outlineHint.type === "toc") {
-            tocFromOutline = outlineHint.pageIndex + 1;
-          } else if (outlineHint.type === "content_start") {
-            contentStartFromOutline = outlineHint.pageIndex + 1;
-          }
-        }
-
-        // 2. Page labels as boundary signal
-        let labelBoundary = null;
-        if (AppState.pdf.romanToArabicBoundary !== null) {
-          labelBoundary = AppState.pdf.romanToArabicBoundary;
-        }
-
-        // 3. Offset detection via header/footer page numbers
-        let detectedOffset = null;
-
-        for (let i = 1; i <= maxScan - 2; i++) {
-          const a = await getHeaderFooterNumberCandidates(i);
-          const b = await getHeaderFooterNumberCandidates(i + 1);
-          const c = await getHeaderFooterNumberCandidates(i + 2);
-
-          for (const aa of a) {
-            const bb = b.find(x => x.val === aa.val + 1 && Math.abs(x.y - aa.y) < 60);
-            if (!bb) continue;
-            const cc = c.find(x => x.val === bb.val + 1 && Math.abs(x.y - bb.y) < 60);
-            if (!cc) continue;
-
-            detectedOffset = i - (aa.val - 1);
-            if (detectedOffset < 1) detectedOffset = 1;
-            break;
-          }
-          if (detectedOffset) break;
-        }
-
-        if (!detectedOffset && labelBoundary !== null) {
-          detectedOffset = labelBoundary + 1;
-        }
-
-        if (!detectedOffset && AppState.pdf.pageLabels && AppState.pdf.pageLabels.length) {
-          const idx = AppState.pdf.pageLabels.findIndex(l => /^\d+$/.test(String(l || "").trim()));
-          if (idx !== -1) {
-            const n = parseInt(AppState.pdf.pageLabels[idx], 10);
-            detectedOffset = (idx + 1) - (n - 1);
-            if (detectedOffset < 1) detectedOffset = 1;
-          }
-        }
-
-        // 4. ToC range detection using robust finder
-        let tocStart = null;
-        let tocEnd = null;
-
-        if (tocFromOutline) {
-          tocStart = tocFromOutline;
-          const scanEnd = Math.min(total, tocFromOutline + 10);
-          const range = await autoFindTocRangeRobust(tocFromOutline, scanEnd, contentStartFromOutline || detectedOffset || scanEnd);
-          if (range) {
-            tocStart = range.start;
-            tocEnd = range.end;
-          } else {
-            tocEnd = tocFromOutline;
-          }
-          AppState.toc.confidence = 'high';
-        } else {
-          let searchEnd = maxScan;
-          
-          if (labelBoundary !== null) {
-            searchEnd = Math.min(searchEnd, labelBoundary + 3);
-          }
-          if (contentStartFromOutline) {
-            searchEnd = Math.min(searchEnd, contentStartFromOutline);
-          }
-          if (detectedOffset) {
-            searchEnd = Math.min(searchEnd, detectedOffset + 3);
-          }
-
-          const tocRange = await autoFindTocRangeRobust(1, searchEnd, contentStartFromOutline || detectedOffset || searchEnd);
-          
-          if (tocRange) {
-            tocStart = tocRange.start;
-            tocEnd = tocRange.end;
-            AppState.toc.confidence = 'high';
-          } else if (searchEnd < maxScan) {
-            const fullRange = await autoFindTocRangeRobust(1, maxScan, null);
-            if (fullRange) {
-              tocStart = fullRange.start;
-              tocEnd = fullRange.end;
-              AppState.toc.confidence = 'high';
-            }
-          }
-        }
-
-        // 5. Apply results
-        const parts = [];
-        if (detectedOffset) {
-          El.pageOffset.value = detectedOffset;
-          parts.push("Offset pg " + detectedOffset);
-        } else {
-          parts.push("Offset ?");
-        }
-
-        if (tocStart) {
-          El.tocStart.value = tocStart;
-          El.tocEnd.value = tocEnd || tocStart;
-          parts.push("ToC pg " + tocStart + "-" + (tocEnd || tocStart));
-          await PdfService.renderPreview(tocStart);
-        } else {
-          // Fallback defaults if nothing found
-          El.tocStart.value = 1;
-          El.tocEnd.value = Math.min(3, total);
-          AppState.toc.confidence = 'low';
-          parts.push("ToC ?");
-        }
-
-        updatePageRangeHint();
-        validateAllChapters();
-        updateFrontMatterDisplay();
-
-        statusEl.textContent = original + " | " + parts.join(", ");
-        statusEl.style.backgroundColor = "#d1fae5";
-        setTimeout(() => statusEl.style.backgroundColor = "", 2000);
-      } catch (e) {
-        console.error(e);
-        statusEl.textContent = original + " | Auto-detect error";
-        statusEl.style.backgroundColor = "#fee2e2";
-        setTimeout(() => statusEl.style.backgroundColor = "", 2000);
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    /**********************************************************************
-     * 12) ToC extraction pipeline
-     **********************************************************************/
-    function showExtractStatus(kind, msg) {
-      El.extractStatus.classList.remove("hidden");
-      El.extractStatus.className = "status-box " + kind;
-      El.extractStatus.textContent = msg;
-    }
-
-    function updateDetectedMaxRoman(entries) {
-      AppState.toc.detectedMaxRoman = TocService.detectMaxRoman(entries);
-    }
-
-    function updateMainContentStart(entries) {
-      const start = TocService.findMainContentStartFromEntries(entries);
-      AppState.toc.mainContentStartPdfPage = start;
-      updateFrontMatterDisplay();
-    }
-
-    function parseEntriesToChapters(entries) {
-      const out = [];
-      for (const e of (entries || [])) {
-        if (!e || !e.title || !e.page) continue;
-        if (looksLikeSubchapter(e.title)) continue;
-        out.push({ title: e.title, page: e.page });
-      }
-      return out;
-    }
-
-    async function extractUsingTextExtraction() {
-      if (!AppState.pdf.doc) return alert("Load a PDF first.");
-
-      const startPage = safeParseInt(El.tocStart.value) || 1;
-      const endPage = safeParseInt(El.tocEnd.value) || startPage;
-
-      // Guard: If auto-detect failed (low confidence) and user hasn't changed the defaults
-      if (AppState.toc.confidence === 'low') {
-         // Check if values are still the defaults (1 and 3)
-         if (startPage === 1 && endPage === Math.min(3, AppState.pdf.pageCount)) {
-             if (!confirm("Auto-detect could not find a Table of Contents. Do you want to attempt parsing the default range (Pages 1-3)?")) {
-                 return false;
-             }
-         }
-      }
-
-      if (startPage < 1 || endPage > AppState.pdf.pageCount || startPage > endPage) {
-        showExtractStatus("error", "Invalid ToC page range.");
-        return false;
-      }
-
-      try {
-        showExtractStatus("processing", "Extracting embedded text...");
-        const rawText = await TocService.extractRawLinesFromPdfRange(startPage, endPage, (m) => showExtractStatus("processing", m));
-
-        const entries = parseTocTextFallback(rawText);
-        updateDetectedMaxRoman(entries);
-        updateMainContentStart(entries);
-
-        const chapters = parseEntriesToChapters(entries);
-        if (chapters.length) {
-          setChapters(chapters, { saveHistory: true });
-          showExtractStatus("success", "Found " + chapters.length + " entries from embedded text.");
-          validateAllChapters();
-          return true;
-        }
-
-        showExtractStatus("warning", "Embedded text extraction produced no entries.");
-        return false;
-      } catch (e) {
-        console.error(e);
-        showExtractStatus("error", "Embedded text extraction error: " + e.message);
-        return false;
-      }
-    }
-
-    async function extractUsingOcrFromPdf(overrideOptions) {
-      if (!AppState.pdf.doc) return alert("Load a PDF first.");
-      if (AppState.ui.busy) return;
-      setBusy(true);
-
-      const startPage = safeParseInt(El.tocStart.value) || 1;
-      const endPage = safeParseInt(El.tocEnd.value) || startPage;
-
-      if (startPage < 1 || endPage > AppState.pdf.pageCount || startPage > endPage) {
-        showExtractStatus("error", "Invalid ToC page range.");
-        setBusy(false);
-        return;
-      }
-
-      if ((endPage - startPage + 1) > 15 && !confirm("You are about to OCR " + (endPage - startPage + 1) + " pages. This may crash the browser tab. Continue?")) {
-        setBusy(false);
-        return;
-      }
-
-      try {
-        showExtractStatus("processing", "Starting OCR...");
-        
-        const opts = overrideOptions || {
-            langs: El.ocrLang.value,
-            preprocess: "adaptive"
-        };
-
-        const text = await OcrService.ocrPdfRange(
-          startPage,
-          endPage,
-          opts,
-          (m) => showExtractStatus("processing", m)
-        );
-
-        const raw = normalizeNewlines(text || "");
-        const lines = raw.split("\n").map(l => repairTrailingPageNumber(stripNoise(l))).filter(Boolean);
-        const cleaned = lines.join("\n");
-
-        const entries = parseTocTextFallback(cleaned);
-        updateDetectedMaxRoman(entries);
-        updateMainContentStart(entries);
-
-        const chapters = parseEntriesToChapters(entries);
-        if (chapters.length) {
-          setChapters(chapters, { saveHistory: true });
-          showExtractStatus("success", "Found " + chapters.length + " entries via OCR.");
-          validateAllChapters();
-          setBusy(false);
-          return true;
-        }
-
-        showExtractStatus("warning", "OCR completed but parsing produced no entries.");
-        setBusy(false);
-        return false;
-      } catch (e) {
-        console.error(e);
-        showExtractStatus("error", "OCR error: " + e.message);
-        setBusy(false);
-        return false;
-      }
-    }
-
-    async function autoParseToc() {
-      const okText = await extractUsingTextExtraction();
-      if (okText) return true;
-
-      const wantOcr = !!El.autoOcrFallback.checked;
-      if (!wantOcr) return false;
-
-      const okOcr = await extractUsingOcrFromPdf();
-      if (okOcr) return true;
-
-      showExtractStatus("processing", "Adaptive OCR yielded no results. Retrying with Grayscale...");
-      const okGray = await extractUsingOcrFromPdf({
-          langs: El.ocrLang.value,
-          preprocess: "grayscale"
-      });
-      return okGray;
-    }
-
-    /**********************************************************************
-     * 13) Text fallback parser
-     **********************************************************************/
-    function parseTocTextFallback(rawText) {
-      const lines = normalizeNewlines(rawText || "")
-        .split("\n")
-        .map(l => repairTrailingPageNumber(stripNoise(l)))
-        .map(l => l.trim())
-        .filter(Boolean);
-
-      const fmt = detectTocFormatText(lines);
-      return fmt === "page-first"
-        ? parsePageFirstFormatText(lines)
-        : parsePageLastFormatText(lines);
-    }
-
-    function detectTocFormatText(lines) {
-      let pageFirstCount = 0;
-      let pageLastCount = 0;
-      const sample = lines.slice(0, 60);
-
-      for (const line of sample) {
-        const l = line.trim();
-        if (/^(\d+|[ivxlcdm]+)\s+\p{L}/iu.test(l)) pageFirstCount++;
-        if (/\p{L}.*\s+(\d+|[ivxlcdm]+)$/iu.test(l)) pageLastCount++;
-      }
-      return pageFirstCount > pageLastCount ? "page-first" : "page-last";
-    }
-
-    function cleanTitle(t) {
-      return String(t || "")
-        .replace(/[._\-]+$/g, "")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-    }
-
-    function parsePageFirstFormatText(lines) {
-      const out = [];
-      const re = /^(\d+|[ivxlcdm]+)\s+(.+)$/i;
-      for (const line of lines) {
-        const m = line.match(re);
-        if (!m) continue;
-        const page = normalizePageToken(m[1]);
-        const title = cleanTitle(m[2]);
-        if (page && title) out.push({ title, page });
-      }
-      return out;
-    }
-
-    function parsePageLastFormatText(lines) {
-      const out = [];
-      let buffer = "";
-      let prefixA = "";
-      let prefixB = "";
-
-      const chapterMarkerPattern = /^(chapter|capítulo|capitulo|chapitre|kapitel|capitolo|parte|part|teil|section|sección|seccion)\s*(\d+)\.?$/i;
-      const sectionHeaderPattern = /^(introducción|introduction|conclusión|conclusion|apéndices|appendices|prefacio|preface|foreword|prologue)$/i;
-
-      for (const line of lines) {
-        const s = line.trim();
-
-        if (sectionHeaderPattern.test(s)) {
-          prefixA = s.replace(/\.?$/, "");
-          continue;
-        }
-        if (chapterMarkerPattern.test(s)) {
-          prefixB = s.replace(/\.?$/, "");
-          continue;
-        }
-
-        if (/^(\d+|[ivxlcdm]+)\.?$/i.test(s)) {
-          if (buffer || prefixA || prefixB) {
-            const page = normalizePageToken(s);
-            let title = buffer || "";
-            title = joinPrefix(prefixB, title);
-            title = joinPrefix(prefixA, title);
-            out.push({ title: cleanTitle(title), page });
-            buffer = "";
-            prefixA = "";
-            prefixB = "";
-          }
-          continue;
-        }
-
-        const m = s.match(/^(.+?)\s+(\d+|[ivxlcdm]+)[.)\]]?$/i);
-        if (m) {
-          const t = cleanTitle(m[1]);
-          const page = normalizePageToken(m[2]);
-          const combined = buffer ? (buffer + " " + t) : t;
-          let title = combined;
-          title = joinPrefix(prefixB, title);
-          title = joinPrefix(prefixA, title);
-          out.push({ title: cleanTitle(title), page });
-          buffer = "";
-          prefixA = "";
-          prefixB = "";
-          continue;
-        }
-
-        buffer = buffer ? (buffer + " " + s) : s;
-      }
-
-      return out;
-    }
-
-    /**********************************************************************
-     * 14) Front matter display
-     **********************************************************************/
-    function updateFrontMatterDisplay() {
-      const offset = safeParseInt(El.pageOffset.value) || 1;
-      const row = El.frontMatterRow;
-      if (!row) return;
-
-      if (offset <= 1) {
-        row.classList.add("hidden");
-        return;
-      }
-
-      row.classList.remove("hidden");
-      const endPage = offset - 1;
-      let txt = "PDF pages 1-" + endPage;
-
-      if (AppState.toc.mainContentStartPdfPage && AppState.toc.mainContentStartPdfPage < offset) {
-        txt += ". Main content start at PDF pg " + AppState.toc.mainContentStartPdfPage + ".";
-      }
-
-      El.frontMatterPages.textContent = txt;
-    }
-
-    El.pageOffset.addEventListener("change", () => {
-      validateAllChapters();
-      updateFrontMatterDisplay();
-    });
-
-    /**********************************************************************
-     * 15) Preview helpers
-     **********************************************************************/
-    function previewPage(delta) {
-      const newPage = AppState.ui.currentPreviewPage + delta;
-      if (newPage >= 1 && newPage <= AppState.pdf.pageCount) PdfService.renderPreview(newPage);
-    }
-
-    function openPreviewFullSize() {
-      const dataUrl = El.previewCanvas.toDataURL("image/png");
-      const newTab = window.open();
-      if (!newTab) return;
-      newTab.document.write(
-        "<html><head><title>Page " + AppState.ui.currentPreviewPage + " Preview</title></head>" +
-        "<body style=\"margin:0; display:flex; justify-content:center; background:#333;\">" +
-        "<img src=\"" + dataUrl + "\" style=\"max-width:100%; height:auto;\">" +
-        "</body></html>"
-      );
-      newTab.document.close();
-    }
-
-    function savePreviewImage() {
-      const dataUrl = El.previewCanvas.toDataURL("image/png");
-      const a = document.createElement("a");
-      a.href = dataUrl;
-      a.download = "page_" + AppState.ui.currentPreviewPage + ".png";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
-
-    El.previewCanvas.addEventListener("click", openPreviewFullSize);
-
-    /**********************************************************************
-     * 16) Page range hint
-     **********************************************************************/
-    function updatePageRangeHint() {
-      const start = safeParseInt(El.tocStart.value) || 1;
-      const end = safeParseInt(El.tocEnd.value) || 1;
-      if (start === end) {
-        El.pageRangeHint.textContent = "(1 page)";
-        El.pageRangeHint.style.color = "#666";
-      } else if (end > start) {
-        El.pageRangeHint.textContent = "(" + (end - start + 1) + " pages)";
-        El.pageRangeHint.style.color = "#666";
-      } else {
-        El.pageRangeHint.textContent = "(invalid range)";
-        El.pageRangeHint.style.color = "#dc2626";
-      }
-    }
-
-    El.tocStart.addEventListener("input", updatePageRangeHint);
-    El.tocEnd.addEventListener("input", updatePageRangeHint);
-
-    function setTocToCurrentPage() {
-      const start = safeParseInt(El.tocStart.value) || 0;
-      const cur = AppState.ui.currentPreviewPage;
-      if (start === 0 || cur < start) {
-        El.tocStart.value = cur;
-        El.tocEnd.value = cur;
-      } else {
-        El.tocEnd.value = cur;
-      }
-      updatePageRangeHint();
-    }
-
-    /**********************************************************************
-     * 17) PDF generation
-     **********************************************************************/
-    async function processPdf() {
-      if (!AppState.pdf.bytes) return alert("No PDF loaded");
-
-      const invalid = validateAllChapters();
-      if (invalid > 0) {
-        if (!confirm("Some chapters have invalid page tokens. Continue anyway?")) return;
-      }
-
-      const rows = Array.from(El.chapterList.querySelectorAll(".chapter-row"));
-      let last = -Infinity;
-      let unsorted = false;
-      for (const r of rows) {
-        const idx = getPageFromRow(r);
-        if (idx === 999999) continue;
-        if (idx < last) { unsorted = true; break; }
-        last = idx;
-      }
-      if (unsorted) {
-        const shouldSort = confirm("Chapters are not in page order. Sort them now before generating?");
-        if (shouldSort) sortChaptersByPage();
-      }
-
-      El.processBtn.disabled = true;
-      El.status.classList.remove("hidden");
-      El.status.className = "status-box processing";
-      El.status.textContent = "Generating PDF...";
-
-      try {
-        const { PDFDocument, PDFName, PDFNumber, PDFString, PDFNull } = PDFLib;
-        const doc = await PDFDocument.load(AppState.pdf.bytes);
+        const { PDFDocument, PDFName, PDFNumber, PDFString } = PDFLib;
+        const doc = await PDFDocument.load(pdfBytes);
         const context = doc.context;
 
-        const pageOffset = safeParseInt(El.pageOffset.value) || 1;
+        const firstPageNum = safeParseInt($("first-page-number").value) || 1;
+        const contentStartPdf = safeParseInt(pageOffsetInput.value) || 1;
 
         const outlineItems = [];
-        const skipped = [];
+        const skippedItems = [];
 
-        for (const ch of (AppState.toc.chapters || [])) {
-          const title = String(ch.title || "").trim();
-          const pageVal = String(ch.page || "").trim();
-          if (!title || !pageVal) continue;
-
-          const pdfIndex = pageTokenToPdfIndex(pageVal);
-          if (pdfIndex === null) {
-            skipped.push({ title, pageVal, reason: "Cannot map page token to PDF page" });
-            continue;
-          }
-          outlineItems.push({ title, pageIndex: pdfIndex });
+        if (contentStartPdf > 1) {
+          outlineItems.push({ title: "Front Matter", pageIndex: 0 });
         }
+
+        chapterListEl.querySelectorAll(".chapter-row").forEach(row => {
+          const title = row.querySelector(".chapter-title").value.trim();
+          const pageVal = row.querySelector(".chapter-page").value.trim();
+          if (!title || !pageVal) return;
+
+          const result = pageTokenToPdfIndex(pageVal);
+          const pdfIndex = getPdfIndexValue(result);
+
+          if (pdfIndex === null) {
+            skippedItems.push({ title, pageVal, reason: "Cannot map page token to a PDF page" });
+            return;
+          }
+
+          outlineItems.push({ title, pageIndex: pdfIndex });
+        });
 
         if (outlineItems.length > 0) {
           const refs = [];
@@ -2616,9 +841,8 @@
             const pageRef = doc.getPages()[item.pageIndex].ref;
             const dict = context.obj({
               Title: PDFString.of(item.title),
-              Dest: context.obj([pageRef, PDFName.of("XYZ"), PDFNull, PDFNull, PDFNull]),
-              Parent: PDFNull,
-              Count: PDFNumber.of(0)
+              Dest: context.obj([pageRef, PDFName.of("XYZ"), null, null, null]),
+              Parent: null
             });
             refs.push(context.register(dict));
           }
@@ -2629,6 +853,7 @@
             Last: refs[refs.length - 1],
             Count: PDFNumber.of(refs.length)
           });
+
           const outlineRef = context.register(outlineDict);
 
           for (let i = 0; i < refs.length; i++) {
@@ -2642,29 +867,27 @@
           doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
         }
 
-        if (!El.preserveLabels.checked) {
-          const nums = [];
+        // Page labels
+        const nums = [];
+        if (contentStartPdf > 1) {
           nums.push(PDFNumber.of(0));
-
-          if (pageOffset > 1) {
-            nums.push(context.obj({ S: PDFName.of("r"), St: PDFNumber.of(1) }));
-            nums.push(PDFNumber.of(pageOffset - 1));
-            nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
-          } else {
-            nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(1) }));
-          }
-
-          const labelsDict = context.obj({ Nums: nums });
-          doc.catalog.set(PDFName.of("PageLabels"), context.register(labelsDict));
+          nums.push(context.obj({ S: PDFName.of("r"), St: PDFNumber.of(1) }));
+          nums.push(PDFNumber.of(contentStartPdf - 1));
+          nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(firstPageNum) }));
+        } else {
+          nums.push(PDFNumber.of(0));
+          nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(firstPageNum) }));
         }
+        const labelsDict = context.obj({ Nums: nums });
+        doc.catalog.set(PDFName.of("PageLabels"), context.register(labelsDict));
 
         const data = await doc.save();
         const blob = new Blob([data], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
 
-        let outputFilename = String(El.outputFilename.value || "").trim();
+        let outputFilename = $("output-filename").value.trim();
         if (!outputFilename) outputFilename = "processed_document.pdf";
-        if (!outputFilename.toLowerCase().endsWith(".pdf")) outputFilename += ".pdf";
+        else if (!outputFilename.toLowerCase().endsWith(".pdf")) outputFilename += ".pdf";
 
         const a = document.createElement("a");
         a.href = url;
@@ -2672,125 +895,92 @@
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        
-        // Fix: Delay revocation for Safari/Slow browsers
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        URL.revokeObjectURL(url);
 
-        const chapterCount = outlineItems.length;
-        let msg = "";
-        let cls = "success";
+        const chapterCount = outlineItems.length - (contentStartPdf > 1 ? 1 : 0);
+        if (skippedItems.length > 0) {
+          status.className = "status-box warning";
+          status.textContent = "";
+          status.appendChild(document.createTextNode(
+            `PDF generated with ${outlineItems.length} bookmarks (${chapterCount} chapters${contentStartPdf > 1 ? " + Front Matter" : ""}). `
+          ));
 
-        if (skipped.length) {
-          cls = "warning";
-          msg = "PDF generated with " + chapterCount + " bookmarks. " + skipped.length + " skipped due to invalid page mapping.";
+          const skippedDiv = document.createElement("div");
+          skippedDiv.style.marginTop = "10px";
+
+          const strongEl = document.createElement("strong");
+          strongEl.textContent = `${skippedItems.length} chapter(s) skipped:`;
+          skippedDiv.appendChild(strongEl);
+
+          const ul = document.createElement("ul");
+          ul.style.margin = "8px 0 0 18px";
+          for (const item of skippedItems) {
+            const li = document.createElement("li");
+            li.textContent = `"${item.title}" (page ${item.pageVal}) - ${item.reason}`;
+            ul.appendChild(li);
+          }
+          skippedDiv.appendChild(ul);
+          status.appendChild(skippedDiv);
         } else {
-          msg = "PDF generated with " + chapterCount + " bookmarks.";
+          status.className = "status-box success";
+          status.textContent = `PDF generated with ${outlineItems.length} bookmarks (${chapterCount} chapters${contentStartPdf > 1 ? " + Front Matter" : ""}).`;
         }
-
-        // Fix: Secure DOM creation for manual download link
-        El.status.className = "status-box " + cls;
-        El.status.textContent = ""; // Clear previous content
-        
-        const msgNode = document.createTextNode(msg);
-        El.status.appendChild(msgNode);
-        El.status.appendChild(document.createElement("br"));
-        El.status.appendChild(document.createElement("br"));
-
-        const linkText = document.createTextNode("If the download didn't start automatically, ");
-        El.status.appendChild(linkText);
-
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = outputFilename;
-        link.textContent = "click here to download";
-        link.style.color = "inherit";
-        link.style.textDecoration = "underline";
-        link.style.fontWeight = "bold";
-        El.status.appendChild(link);
-        
-        El.status.appendChild(document.createTextNode("."));
-
-      } catch (e) {
-        console.error(e);
-        El.status.className = "status-box error";
-        El.status.textContent = "Error: " + e.message;
+      } catch (err) {
+        console.error(err);
+        const status = $("status");
+        status.className = "status-box error";
+        status.textContent = "Error: " + err.message;
       } finally {
-        El.processBtn.disabled = false;
+        $("process-btn").disabled = false;
       }
     }
 
-    /**********************************************************************
-     * 18) Wire up UI events
-     **********************************************************************/
-    El.pdfFile.addEventListener("change", async (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      try {
+    // --- Events ---
+    document.addEventListener("DOMContentLoaded", () => {
+      $("backend-test-btn").addEventListener("click", testBackend);
+
+      $("pdf-file").addEventListener("change", async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
         const bytes = await file.arrayBuffer();
-        await PdfService.loadFromBytes(bytes, file.name);
-        await autoDetectStructure();
-      } catch (err) {
-        alert("Error loading PDF: " + err.message);
-      }
+        await loadPdfFromBytes(bytes, file.name);
+      });
+
+      $("load-url-btn").addEventListener("click", loadFromUrl);
+      $("auto-detect-btn").addEventListener("click", aiAnalyzePdf);
+      $("extract-btn").addEventListener("click", aiAnalyzePdf);
+
+      $("prev-page-btn").addEventListener("click", () => previewPage(-1));
+      $("next-page-btn").addEventListener("click", () => previewPage(1));
+      $("preview-scale").addEventListener("change", () => renderPreview(currentPreviewPage));
+      $("preview-page-input").addEventListener("change", () => renderPreview(Number($("preview-page-input").value || 1)));
+
+      $("set-toc-current-btn").addEventListener("click", setTocRangeFromCurrentPage);
+
+      $("custom-first-page-toggle").addEventListener("change", () => {
+        const checked = $("custom-first-page-toggle").checked;
+        $("custom-first-page-section").style.display = checked ? "block" : "none";
+        if (!checked) {
+          $("first-page-number").value = "1";
+        }
+        Array.from(chapterListEl.querySelectorAll(".chapter-row")).forEach(r => validateChapterRow(r));
+      });
+
+      $("set-offset-to-preview").addEventListener("click", () => {
+        $("page-offset").value = currentPreviewPage;
+        Array.from(chapterListEl.querySelectorAll(".chapter-row")).forEach(r => validateChapterRow(r));
+      });
+
+      $("reset-offset").addEventListener("click", () => {
+        $("page-offset").value = 1;
+        Array.from(chapterListEl.querySelectorAll(".chapter-row")).forEach(r => validateChapterRow(r));
+      });
+
+      $("add-chapter-btn").addEventListener("click", addChapter);
+      $("process-btn").addEventListener("click", processPdf);
+
+      testBackend();
     });
-
-    El.loadUrlBtn.addEventListener("click", async () => {
-      El.urlError.classList.add("hidden");
-      El.loadUrlBtn.disabled = true;
-      El.loadUrlBtn.textContent = "Loading...";
-      try {
-        await PdfService.loadFromDropboxUrl(El.pdfUrl.value);
-        El.pdfUrl.value = "";
-        await autoDetectStructure();
-      } catch (e) {
-        El.urlError.textContent = "Error loading PDF: " + e.message;
-        El.urlError.classList.remove("hidden");
-      } finally {
-        El.loadUrlBtn.disabled = false;
-        El.loadUrlBtn.textContent = "Load";
-      }
-    });
-
-    El.pdfUrl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); El.loadUrlBtn.click(); }
-    });
-
-    El.autoDetectBtn.addEventListener("click", autoDetectStructure);
-
-    El.autoParseBtn.addEventListener("click", async () => {
-      await autoParseToc();
-    });
-
-    El.autoRunBtn.addEventListener("click", async () => {
-      await autoDetectStructure();
-      await autoParseToc();
-    });
-
-    El.resetChaptersBtn.addEventListener("click", () => {
-      resetChaptersAndHistory();
-      setChapters([{ title: "", page: "" }], { saveHistory: true });
-    });
-
-    El.prevPageBtn.addEventListener("click", () => previewPage(-1));
-    El.nextPageBtn.addEventListener("click", () => previewPage(1));
-    El.previewScale.addEventListener("change", () => PdfService.renderPreview(AppState.ui.currentPreviewPage));
-    El.savePreviewBtn.addEventListener("click", savePreviewImage);
-
-    El.setTocCurrentBtn.addEventListener("click", setTocToCurrentPage);
-
-    El.extractTextBtn.addEventListener("click", extractUsingTextExtraction);
-    El.extractOcrBtn.addEventListener("click", () => extractUsingOcrFromPdf());
-
-    El.undoBtn.addEventListener("click", undo);
-    El.redoBtn.addEventListener("click", redo);
-    El.sortBtn.addEventListener("click", sortChaptersByPage);
-    El.validateBtn.addEventListener("click", validateAllChapters);
-    El.addChapterBtn.addEventListener("click", addChapter);
-
-    El.processBtn.addEventListener("click", processPdf);
-
-    updatePageRangeHint();
-    updateHistoryButtons();
   </script>
 </body>
 </html>
