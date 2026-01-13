@@ -339,27 +339,26 @@
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             
-            // Apply settings from AI
+            // Apply settings from AI (backend now calculates these)
             if (data.content_start_pdf_page) {
                 $("page-offset").value = data.content_start_pdf_page;
             }
             if (data.first_page_number) {
                 $("first-page-number").value = data.first_page_number;
-                // Auto-show settings if non-standard
                 if (data.first_page_number !== 1) {
                     $("page-settings").classList.remove("hidden");
                 }
             }
             
-            // Calculate roman start page from AI's anchor finding
-            // If AI found roman numeral X on PDF page Y, then "i" is on PDF page Y - X + 1
-            if (data.found_roman_pdf_page && data.found_roman_value) {
-                romanStartPdfPage = data.found_roman_pdf_page - data.found_roman_value + 1;
-                console.log(`Roman anchor: found ${data.found_roman_value} on PDF page ${data.found_roman_pdf_page}, so roman 'i' starts at PDF page ${romanStartPdfPage}`);
+            // Use pre-calculated roman start page from backend
+            if (data.roman_start_pdf_page) {
+                romanStartPdfPage = data.roman_start_pdf_page;
+                console.log(`Roman start PDF page: ${romanStartPdfPage}`);
             } else {
-                // Default: assume roman pages start at PDF page 1
                 romanStartPdfPage = 1;
             }
+            
+            console.log(`Page settings - Arabic starts: PDF page ${data.content_start_pdf_page}, Roman starts: PDF page ${romanStartPdfPage}, First page num: ${data.first_page_number}`);
             
             // Populate chapters
             $("chapter-list").innerHTML = "";
