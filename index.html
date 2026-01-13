@@ -264,7 +264,11 @@
             (data.entries || []).forEach(entry => addChapterRow(entry.title, entry.page));
             
             statusEl.className = "status-box success";
-            statusEl.textContent = `✅ Found ${data.entries?.length || 0} chapters. Review below and click Download when ready.`;
+            if (data.source === "pdf_bookmarks") {
+                statusEl.textContent = `📑 Found ${data.entries?.length || 0} chapters from existing PDF bookmarks (no AI needed). Review below.`;
+            } else {
+                statusEl.textContent = `✅ AI found ${data.entries?.length || 0} chapters. Review below and click Download when ready.`;
+            }
             
             ["step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
             
