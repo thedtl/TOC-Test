@@ -111,8 +111,13 @@
   <div class="card hidden" id="step-chapters">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
         <h2 style="margin:0;">Chapters</h2>
-        <button id="run-ai-btn" class="success" style="width: auto;">✨ AI Auto-Detect</button>
+        <div style="display: flex; gap: 8px;">
+            <button id="verify-btn" class="secondary" style="width: auto;">🔍 Verify Pages</button>
+            <button id="run-ai-btn" class="success" style="width: auto;">✨ Re-scan ToC</button>
+        </div>
     </div>
+    
+    <div id="verify-status" class="status-box hidden" style="margin-bottom: 15px;"></div>
     
     <div id="ai-status" class="status-box hidden"></div>
 
@@ -252,6 +257,7 @@
             // Populate Chapters
             const list = $("chapter-list");
             list.innerHTML = "";
+            $("verify-status").classList.add("hidden");  // Hide old verification results
             (data.entries || []).forEach(entry => addChapterRow(entry.title, entry.page));
             
             statusEl.className = "status-box success";
@@ -277,12 +283,18 @@
             <span class="drag-handle">☰</span>
             <input type="text" class="ch-title" value="${escapeHtml(title)}" placeholder="Title">
             <input type="text" class="ch-page" value="${escapeHtml(String(page))}" placeholder="Page" style="width: 80px;">
+            <button class="verify-btn" title="Preview this page">👁</button>
             <button class="del-btn">×</button>
         `;
         
         // Events
         div.querySelector(".del-btn").onclick = () => div.remove();
-        div.querySelector(".ch-page").oninput = () => validateRow(div);
+        div.querySelector(".ch-page").oninput = () => {
+            validateRow(div);
+            resetRowStyle(div);  // Clear verification styling on edit
+        };
+        div.querySelector(".ch-title").oninput = () => resetRowStyle(div);
+        div.querySelector(".verify-btn").onclick = () => verifyRow(div);
         
         // Drag Logic (Simplified)
         const handle = div.querySelector(".drag-handle");
@@ -292,6 +304,33 @@
         
         $("chapter-list").appendChild(div);
         validateRow(div);
+    }
+    
+    function verifyRow(row) {
+        const pageStr = row.querySelector(".ch-page").value;
+        const idx = calculatePdfIndex(pageStr);
+        
+        if (idx === null || idx < 0 || idx >= totalPages) {
+            alert(`Invalid page: "${pageStr}" — cannot preview`);
+            return;
+        }
+        
+        // Jump to that page in preview (idx is 0-based, renderPreview expects 1-based)
+        renderPreview(idx + 1);
+        
+        // Scroll preview into view
+        $("preview-canvas").scrollIntoView({ behavior: "smooth", block: "center" });
+        
+        // Highlight the row briefly
+        row.style.background = "#fef3c7";
+        setTimeout(() => row.style.background = "", 1500);
+    }
+    
+    function resetRowStyle(row) {
+        // Clear verification styling when user edits
+        row.style.borderColor = "";
+        row.style.background = "";
+        row.querySelector(".ch-page").title = "";
     }
 
     // --- THE CRITICAL MATH LOGIC (Must Keep) ---
@@ -350,6 +389,125 @@
     function escapeHtml(str) {
         if (!str) return "";
         return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    // --- 5. Verify Chapters ---
+    async function verifyChapters() {
+        const statusEl = $("verify-status");
+        statusEl.classList.remove("hidden");
+        statusEl.className = "status-box processing";
+        statusEl.textContent = "🔍 Verifying chapter pages... (checking ±5 pages for each)";
+        
+        // Gather chapters from UI
+        const rows = document.querySelectorAll(".chapter-row");
+        const chapters = [];
+        
+        rows.forEach(row => {
+            const title = row.querySelector(".ch-title").value.trim();
+            const page = row.querySelector(".ch-page").value.trim();
+            if (title && page) {
+                chapters.push({ title, page });
+            }
+        });
+        
+        if (chapters.length === 0) {
+            statusEl.className = "status-box error";
+            statusEl.textContent = "❌ No chapters to verify";
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append("chapters_json", JSON.stringify(chapters));
+        formData.append("content_start_pdf_page", $("page-offset").value);
+        formData.append("first_page_number", $("first-page-number").value);
+        formData.append("search_range", "5");
+        
+        // Send PDF
+        const fileInput = $("pdf-file");
+        const urlInput = $("pdf-url");
+        
+        if (fileInput.files[0]) {
+            formData.append("pdf_file", fileInput.files[0]);
+        } else if (urlInput.value) {
+            formData.append("pdf_url", urlInput.value);
+        } else {
+            const blob = new Blob([pdfBytes], { type: "application/pdf" });
+            formData.append("pdf_file", blob, "document.pdf");
+        }
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/verify-chapters`, { method: "POST", body: formData });
+            if (!res.ok) throw new Error(await res.text());
+            
+            const data = await res.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            // Process results and auto-fix
+            const results = data.results || [];
+            let matchCount = 0;
+            let fixedCount = 0;
+            let notFoundCount = 0;
+            const fixes = [];
+            
+            rows.forEach((row, i) => {
+                const result = results[i];
+                if (!result) return;
+                
+                const pageInput = row.querySelector(".ch-page");
+                const titleInput = row.querySelector(".ch-title");
+                
+                if (result.found && result.offset_diff === 0) {
+                    // Match - green highlight, no change needed
+                    row.style.borderColor = "#22c55e";
+                    row.style.background = "#f0fdf4";
+                    matchCount++;
+                } else if (result.found && result.offset_diff !== 0) {
+                    // Found on different page - AUTO-FIX with pdf:X
+                    const oldValue = pageInput.value;
+                    const newValue = `pdf:${result.found_on_page}`;
+                    pageInput.value = newValue;
+                    
+                    row.style.borderColor = "#f59e0b";
+                    row.style.background = "#fffbeb";
+                    fixes.push(`"${titleInput.value.substring(0, 30)}..." : ${oldValue} → ${newValue}`);
+                    fixedCount++;
+                } else {
+                    // Not found - red highlight, leave unchanged
+                    row.style.borderColor = "#ef4444";
+                    row.style.background = "#fef2f2";
+                    pageInput.title = "Chapter not found in scanned range";
+                    notFoundCount++;
+                }
+            });
+            
+            // Show summary
+            let summary = `✅ Verified ${results.length} chapters:\n`;
+            summary += `   • ${matchCount} correct\n`;
+            
+            if (fixedCount > 0) {
+                summary += `   • ${fixedCount} auto-fixed\n`;
+            }
+            
+            if (notFoundCount > 0) {
+                summary += `   • ${notFoundCount} not found (may need manual adjustment)\n`;
+            }
+            
+            if (fixes.length > 0) {
+                summary += `\n📝 Changes made:\n`;
+                fixes.forEach(f => summary += `   ${f}\n`);
+            }
+            
+            statusEl.className = notFoundCount > 0 ? "status-box processing" : "status-box success";
+            statusEl.style.whiteSpace = "pre-wrap";
+            statusEl.textContent = summary;
+            
+        } catch (e) {
+            statusEl.className = "status-box error";
+            statusEl.textContent = "❌ Verification error: " + e.message;
+        }
     }
 
     // --- 5. PDF Generation ---
@@ -484,6 +642,7 @@
         };
 
         $("run-ai-btn").onclick = runAiAnalysis;
+        $("verify-btn").onclick = verifyChapters;
         $("add-chapter-btn").onclick = () => addChapterRow();
         $("download-btn").onclick = generatePdf;
         
