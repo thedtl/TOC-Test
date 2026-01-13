@@ -99,6 +99,7 @@
         <div style="display: flex; gap: 5px; align-items: center; justify-content: flex-end;">
             <button id="prev-page" class="secondary" style="width:40px;">←</button>
             <input type="number" id="preview-page-num" value="1" style="width:60px; margin:0; text-align:center;">
+            <span id="total-pages" style="color: #64748b;">/ ?</span>
             <button id="next-page" class="secondary" style="width:40px;">→</button>
         </div>
       </div>
@@ -163,28 +164,33 @@
     }
 
     async function loadPdf(data, name) {
-        pdfBytes = data;
-        pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+        // Store as Uint8Array to prevent detachment issues
+        pdfBytes = new Uint8Array(data);
+        // Pass a copy to pdf.js so our bytes stay valid
+        pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
         totalPages = pdfDoc.numPages;
         
-        $("file-info").textContent = `Loaded: ${name} (${totalPages} pages)`;
+        $("file-info").textContent = `✅ Loaded: ${name} (${totalPages} pages)`;
         $("file-info").classList.remove("hidden");
         
         // Set output filename
         const baseName = name.replace(/\.pdf$/i, "");
         $("output-filename").value = `${baseName} (bookmarked).pdf`;
         
-        ["step-preview", "step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
+        // Show preview section only, not chapters yet
+        $("step-preview").classList.remove("hidden");
         renderPreview(1);
         
-        // Auto-run AI
-        runAiAnalysis();
+        // Run AI - sections will be revealed when AI completes
+        await runAiAnalysis();
     }
 
     // --- 2. Preview Logic ---
     async function renderPreview(num) {
         currentPage = Math.max(1, Math.min(totalPages, num));
         $("preview-page-num").value = currentPage;
+        $("preview-page-num").max = totalPages;
+        $("total-pages").textContent = `/ ${totalPages}`;
         
         const page = await pdfDoc.getPage(currentPage);
         const viewport = page.getViewport({ scale: 1.5 });
@@ -201,7 +207,7 @@
         const statusEl = $("ai-status");
         statusEl.classList.remove("hidden");
         statusEl.className = "status-box processing";
-        statusEl.textContent = "AI is reading the PDF...";
+        statusEl.textContent = "🔍 AI is analyzing the PDF structure...";
 
         const formData = new FormData();
         formData.append("max_pages", $("ai-max-pages").value);
@@ -221,14 +227,27 @@
         }
 
         try {
+            statusEl.textContent = "🤖 Sending to AI... (this may take a few seconds)";
+            
             const res = await fetch(`${BACKEND_URL}/analyze-pdf-ai`, { method: "POST", body: formData });
             if (!res.ok) throw new Error(await res.text());
             
             const data = await res.json();
             
+            // Check for error in response
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
             // Apply AI Findings
             if (data.content_start_pdf_page) $("page-offset").value = data.content_start_pdf_page;
-            if (data.first_page_number) $("first-page-number").value = data.first_page_number;
+            if (data.first_page_number) {
+                $("first-page-number").value = data.first_page_number;
+                // If first page isn't 1, check the custom checkbox
+                if (data.first_page_number !== 1) {
+                    $("custom-first-page-toggle").checked = true;
+                }
+            }
             
             // Populate Chapters
             const list = $("chapter-list");
@@ -236,10 +255,17 @@
             (data.entries || []).forEach(entry => addChapterRow(entry.title, entry.page));
             
             statusEl.className = "status-box success";
-            statusEl.textContent = `Success! Found ${data.entries.length} chapters.`;
+            statusEl.textContent = `✅ Found ${data.entries?.length || 0} chapters. Review below and click Download when ready.`;
+            
+            // Now reveal the chapters and download sections
+            ["step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
+            
         } catch (e) {
             statusEl.className = "status-box error";
-            statusEl.textContent = "AI Error: " + e.message;
+            statusEl.textContent = "❌ AI Error: " + e.message + " — You can add chapters manually below.";
+            
+            // Still reveal sections so user can add manually
+            ["step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
         }
     }
 
@@ -402,13 +428,26 @@
         checkBackend();
         
         $("pdf-file").onchange = async (e) => {
-            if (e.target.files[0]) loadPdf(await e.target.files[0].arrayBuffer(), e.target.files[0].name);
+            if (e.target.files[0]) {
+                $("file-info").textContent = "📄 Loading PDF...";
+                $("file-info").classList.remove("hidden");
+                await loadPdf(await e.target.files[0].arrayBuffer(), e.target.files[0].name);
+            }
         };
 
         $("load-url-btn").onclick = async () => {
             const url = $("pdf-url").value;
             if (!url) return;
             if (WORKER_URL.includes("your-worker")) return alert("Please set WORKER_URL in code");
+            
+            // Show loading state
+            const btn = $("load-url-btn");
+            const originalText = btn.textContent;
+            btn.textContent = "Loading...";
+            btn.disabled = true;
+            $("url-error").classList.add("hidden");
+            $("file-info").textContent = "📥 Downloading PDF...";
+            $("file-info").classList.remove("hidden");
             
             // Try to extract filename from URL
             let filename = "Dropbox PDF";
@@ -424,10 +463,14 @@
             try {
                 const res = await fetch(`${WORKER_URL}?url=${encodeURIComponent(url)}`);
                 if (!res.ok) throw new Error("Proxy Error");
-                loadPdf(await res.arrayBuffer(), filename);
+                await loadPdf(await res.arrayBuffer(), filename);
             } catch (e) {
-                $("url-error").textContent = e.message;
+                $("url-error").textContent = "❌ " + e.message;
                 $("url-error").classList.remove("hidden");
+                $("file-info").classList.add("hidden");
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
             }
         };
 
