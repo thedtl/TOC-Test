@@ -198,7 +198,7 @@
       </div>
       
       <p style="color: #64748b; margin-bottom: 15px;">
-        We'll search for each chapter title in your PDF and add bookmarks to where we find them.
+        Use the Preview button to verify each chapter goes to the right page before downloading.
       </p>
       
       <div style="margin-bottom: 15px; max-width: 400px; margin-left: auto; margin-right: auto;">
@@ -589,7 +589,7 @@
         }
     }
 
-    // --- Download (Backend Searches & Creates PDF) ---
+    // --- Download (Backend uses pre-calculated PDF pages) ---
     async function downloadPdf() {
         const btn = $("download-btn");
         const statusEl = $("download-status");
@@ -598,22 +598,42 @@
         btn.textContent = "Creating PDF...";
         statusEl.classList.remove("hidden");
         statusEl.className = "status-box processing";
-        statusEl.textContent = "Searching for chapters and adding bookmarks...";
+        statusEl.textContent = "Adding bookmarks...";
         
         const rows = document.querySelectorAll(".chapter-row");
         const chapters = [];
+        let invalidCount = 0;
+        
         rows.forEach(row => {
             const title = row.querySelector(".ch-title").value.trim();
-            const page = row.querySelector(".ch-page").value.trim();
-            if (title) chapters.push({ title, page }); // Send page as hint
+            const pageStr = row.querySelector(".ch-page").value.trim();
+            
+            if (!title) return;
+            
+            // Calculate the actual PDF page (same logic as preview)
+            const pdfIndex = calculatePdfIndex(pageStr);
+            
+            if (pdfIndex !== null && pdfIndex >= 0 && pdfIndex < totalPages) {
+                chapters.push({ 
+                    title, 
+                    pdf_page: pdfIndex + 1  // Convert 0-indexed to 1-indexed
+                });
+            } else {
+                invalidCount++;
+                console.warn(`Skipping "${title}" - invalid page: ${pageStr}`);
+            }
         });
         
         if (!chapters.length) {
             statusEl.className = "status-box error";
-            statusEl.textContent = "No chapters to bookmark.";
+            statusEl.textContent = "No valid chapters to bookmark. Check page numbers.";
             btn.disabled = false;
             btn.textContent = "⬇️ Download with Bookmarks";
             return;
+        }
+        
+        if (invalidCount > 0) {
+            console.warn(`${invalidCount} chapters skipped due to invalid page numbers`);
         }
         
         const formData = new FormData();
@@ -636,7 +656,7 @@
             
             // Get counts from headers
             const added = res.headers.get("X-Bookmarks-Added") || "?";
-            const notFound = res.headers.get("X-Bookmarks-Not-Found") || "0";
+            const skipped = res.headers.get("X-Bookmarks-Skipped") || "0";
             
             // Download the streamed PDF
             const blob = await res.blob();
@@ -648,8 +668,8 @@
             URL.revokeObjectURL(url);
             
             statusEl.className = "status-box success";
-            if (parseInt(notFound) > 0) {
-                statusEl.textContent = `✓ Added ${added} bookmarks. (${notFound} chapters not found in PDF text)`;
+            if (parseInt(skipped) > 0 || invalidCount > 0) {
+                statusEl.textContent = `✓ Added ${added} bookmarks. (${parseInt(skipped) + invalidCount} skipped)`;
             } else {
                 statusEl.textContent = `✓ Added ${added} bookmarks. Download started!`;
             }
