@@ -226,6 +226,7 @@
     let pdfUrl = null;
     let totalPages = 0;
     let currentPage = 1;
+    let romanStartPdfPage = 1; // PDF page where roman numeral "i" would be
 
     const $ = id => document.getElementById(id);
 
@@ -276,6 +277,7 @@
         pdfUrl = null;
         totalPages = 0;
         currentPage = 1;
+        romanStartPdfPage = 1;
         
         $("pdf-file").value = "";
         $("pdf-url").value = "";
@@ -343,6 +345,16 @@
                 if (data.first_page_number !== 1) {
                     $("page-settings").classList.remove("hidden");
                 }
+            }
+            
+            // Calculate roman start page from AI's anchor finding
+            // If AI found roman numeral X on PDF page Y, then "i" is on PDF page Y - X + 1
+            if (data.found_roman_pdf_page && data.found_roman_value) {
+                romanStartPdfPage = data.found_roman_pdf_page - data.found_roman_value + 1;
+                console.log(`Roman anchor: found ${data.found_roman_value} on PDF page ${data.found_roman_pdf_page}, so roman 'i' starts at PDF page ${romanStartPdfPage}`);
+            } else {
+                // Default: assume roman pages start at PDF page 1
+                romanStartPdfPage = 1;
             }
             
             // Populate chapters
@@ -444,12 +456,13 @@
         const contentStart = parseInt($("page-offset").value) || 1;
         const firstPageNum = parseInt($("first-page-number").value) || 1;
 
-        // Roman numeral
+        // Roman numeral - use romanStartPdfPage
         if (/^[ivxlcdm]+$/.test(token)) {
             const val = romanToInt(token);
             if (!val) return null;
-            // Roman pages are before content start
-            return contentStart - 1 - (firstPageNum - val);
+            // Roman "i" is on romanStartPdfPage, so "val" is on romanStartPdfPage + val - 1
+            const pdfPage = romanStartPdfPage + val - 1;
+            return (pdfPage >= 1 && pdfPage <= totalPages) ? pdfPage - 1 : null;
         }
 
         // Arabic numeral
@@ -500,7 +513,7 @@
         formData.append("chapters_json", JSON.stringify(chapters));
         formData.append("content_start_pdf_page", $("page-offset").value);
         formData.append("first_page_number", $("first-page-number").value);
-        formData.append("roman_start_pdf_page", "1");
+        formData.append("roman_start_pdf_page", String(romanStartPdfPage));
         formData.append("search_range", "5");
         
         if (pdfSource === 'url' && pdfUrl) {
@@ -604,7 +617,7 @@
         formData.append("chapters_json", JSON.stringify(chapters));
         formData.append("content_start_pdf_page", $("page-offset").value);
         formData.append("first_page_number", $("first-page-number").value);
-        formData.append("roman_start_pdf_page", "1");
+        formData.append("roman_start_pdf_page", String(romanStartPdfPage));
         formData.append("output_filename", $("output-filename").value || "bookmarked.pdf");
         
         if (pdfSource === 'url' && pdfUrl) {
