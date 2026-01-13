@@ -205,7 +205,6 @@
         </div>
         <div style="display: flex; gap: 8px;">
             <button id="verify-btn" class="secondary" style="width: auto;">🔍 Verify Pages</button>
-            <button id="run-ai-btn" class="secondary" style="width: auto;">🔄 Re-scan</button>
         </div>
     </div>
     
@@ -336,6 +335,8 @@
 
     // --- 3. AI Logic ---
     async function runAiAnalysis(skipBookmarks = false) {
+        console.log("runAiAnalysis called, skipBookmarks:", skipBookmarks);
+        
         const statusEl = $("ai-status");
         statusEl.classList.remove("hidden");
         statusEl.className = "status-box processing";
@@ -345,6 +346,7 @@
         formData.append("max_pages", $("ai-max-pages").value);
         if (skipBookmarks) {
             formData.append("skip_bookmarks", "true");
+            console.log("Added skip_bookmarks=true to form data");
         }
         
         const fileInput = $("pdf-file");
@@ -364,6 +366,7 @@
             if (!res.ok) throw new Error(await res.text());
             
             const data = await res.json();
+            console.log("AI response:", data);
             if (data.error) throw new Error(data.error);
             
             if (data.content_start_pdf_page) $("page-offset").value = data.content_start_pdf_page;
@@ -379,18 +382,22 @@
             
             statusEl.className = "status-box success";
             if (data.source === "pdf_bookmarks") {
-                statusEl.innerHTML = `📑 Found ${data.entries?.length || 0} chapters from existing PDF bookmarks. 
-                    <br><small style="color: #64748b;">If these don't look right, 
-                    <a href="#" id="force-ai-link" style="color: var(--primary);">click here to scan the table of contents with AI</a>.</small>`;
+                statusEl.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <span>📑 Found ${data.entries?.length || 0} chapters from existing PDF bookmarks.</span>
+                        <button id="use-ai-btn" class="secondary" style="width: auto; margin: 0; padding: 6px 12px; font-size: 0.85rem;">
+                            ✨ Use AI Instead
+                        </button>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">
+                        If these don't look right, click the button to have AI scan the table of contents.
+                    </div>`;
                 
-                // Add click handler for the AI link
+                // Add click handler for the AI button
                 setTimeout(() => {
-                    const link = $("force-ai-link");
-                    if (link) {
-                        link.onclick = (e) => {
-                            e.preventDefault();
-                            runAiAnalysis(true); // Force AI scan
-                        };
+                    const btn = $("use-ai-btn");
+                    if (btn) {
+                        btn.onclick = () => runAiAnalysis(true);
                     }
                 }, 0);
             } else {
@@ -751,7 +758,6 @@
             document.querySelectorAll(".chapter-row").forEach(validateRow);
         };
 
-        $("run-ai-btn").onclick = () => runAiAnalysis(true); // Re-scan always uses AI
         $("verify-btn").onclick = verifyChapters;
         $("add-chapter-btn").onclick = () => addChapterRow();
         $("download-btn").onclick = generatePdf;
