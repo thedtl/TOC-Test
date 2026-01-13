@@ -197,6 +197,10 @@
         <h2 class="step-title">Download Your PDF</h2>
       </div>
       
+      <p style="color: #64748b; margin-bottom: 15px;">
+        We'll search for each chapter title in your PDF and add bookmarks to where we find them.
+      </p>
+      
       <div style="margin-bottom: 15px; max-width: 400px; margin-left: auto; margin-right: auto;">
         <label style="text-align: left;">Filename:</label>
         <input type="text" id="output-filename" placeholder="my-book-bookmarked.pdf">
@@ -586,7 +590,7 @@
         }
     }
 
-    // --- Download (Backend Creates PDF) ---
+    // --- Download (Backend Searches & Creates PDF) ---
     async function downloadPdf() {
         const btn = $("download-btn");
         const statusEl = $("download-status");
@@ -595,14 +599,14 @@
         btn.textContent = "Creating PDF...";
         statusEl.classList.remove("hidden");
         statusEl.className = "status-box processing";
-        statusEl.textContent = "Adding bookmarks...";
+        statusEl.textContent = "Searching for chapters and adding bookmarks...";
         
         const rows = document.querySelectorAll(".chapter-row");
         const chapters = [];
         rows.forEach(row => {
             const title = row.querySelector(".ch-title").value.trim();
             const page = row.querySelector(".ch-page").value.trim();
-            if (title && page) chapters.push({ title, page });
+            if (title) chapters.push({ title, page }); // Send page as hint
         });
         
         if (!chapters.length) {
@@ -615,9 +619,6 @@
         
         const formData = new FormData();
         formData.append("chapters_json", JSON.stringify(chapters));
-        formData.append("content_start_pdf_page", $("page-offset").value);
-        formData.append("first_page_number", $("first-page-number").value);
-        formData.append("roman_start_pdf_page", String(romanStartPdfPage));
         formData.append("output_filename", $("output-filename").value || "bookmarked.pdf");
         
         if (pdfSource === 'url' && pdfUrl) {
@@ -634,6 +635,10 @@
                 throw new Error(errText);
             }
             
+            // Get counts from headers
+            const added = res.headers.get("X-Bookmarks-Added") || "?";
+            const notFound = res.headers.get("X-Bookmarks-Not-Found") || "0";
+            
             // Download the streamed PDF
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
@@ -644,7 +649,11 @@
             URL.revokeObjectURL(url);
             
             statusEl.className = "status-box success";
-            statusEl.textContent = "✓ Download started!";
+            if (parseInt(notFound) > 0) {
+                statusEl.textContent = `✓ Added ${added} bookmarks. (${notFound} chapters not found in PDF text)`;
+            } else {
+                statusEl.textContent = `✓ Added ${added} bookmarks. Download started!`;
+            }
             
         } catch (e) {
             statusEl.className = "status-box error";
