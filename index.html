@@ -170,6 +170,10 @@
         $("file-info").textContent = `Loaded: ${name} (${totalPages} pages)`;
         $("file-info").classList.remove("hidden");
         
+        // Set output filename
+        const baseName = name.replace(/\.pdf$/i, "");
+        $("output-filename").value = `${baseName} (bookmarked).pdf`;
+        
         ["step-preview", "step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
         renderPreview(1);
         
@@ -246,7 +250,7 @@
         div.innerHTML = `
             <span class="drag-handle">☰</span>
             <input type="text" class="ch-title" value="${escapeHtml(title)}" placeholder="Title">
-            <input type="text" class="ch-page" value="${page}" placeholder="Page" style="width: 80px;">
+            <input type="text" class="ch-page" value="${escapeHtml(String(page))}" placeholder="Page" style="width: 80px;">
             <button class="del-btn">×</button>
         `;
         
@@ -318,68 +322,79 @@
     }
 
     function escapeHtml(str) {
-        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+        if (!str) return "";
+        return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     }
 
     // --- 5. PDF Generation ---
     async function generatePdf() {
-        const { PDFDocument, PDFName, PDFString } = PDFLib;
-        const doc = await PDFDocument.load(pdfBytes);
-        
-        const rows = document.querySelectorAll(".chapter-row");
-        const bookmarks = [];
-
-        rows.forEach(row => {
-            const title = row.querySelector(".ch-title").value;
-            const pageStr = row.querySelector(".ch-page").value;
-            const idx = calculatePdfIndex(pageStr);
+        try {
+            const { PDFDocument, PDFName, PDFString } = PDFLib;
+            const doc = await PDFDocument.load(pdfBytes);
             
-            if (idx !== null && title) {
-                bookmarks.push({ title, idx });
-            }
-        });
+            const rows = document.querySelectorAll(".chapter-row");
+            const bookmarks = [];
 
-        // Create Outline
-        const context = doc.context;
-        const refs = [];
-        
-        bookmarks.forEach(b => {
-            const pageRef = doc.getPages()[b.idx].ref;
-            const dict = context.obj({
-                Title: PDFString.of(b.title),
-                Dest: context.obj([pageRef, PDFName.of("XYZ"), null, null, null]),
-                Parent: null
+            rows.forEach(row => {
+                const title = row.querySelector(".ch-title").value;
+                const pageStr = row.querySelector(".ch-page").value;
+                const idx = calculatePdfIndex(pageStr);
+                
+                if (idx !== null && idx >= 0 && idx < totalPages && title) {
+                    bookmarks.push({ title, idx });
+                }
             });
-            refs.push(context.register(dict));
-        });
 
-        if (refs.length > 0) {
-            const outlineDict = context.obj({
-                Type: PDFName.of("Outlines"),
-                First: refs[0],
-                Last: refs[refs.length - 1],
-                Count: refs.length
-            });
-            const outlineRef = context.register(outlineDict);
-
-            // Link Linked List
-            for (let i = 0; i < refs.length; i++) {
-                const item = context.lookup(refs[i]);
-                item.set(PDFName.of("Parent"), outlineRef);
-                if (i > 0) item.set(PDFName.of("Prev"), refs[i - 1]);
-                if (i < refs.length - 1) item.set(PDFName.of("Next"), refs[i + 1]);
+            if (bookmarks.length === 0) {
+                alert("No valid bookmarks to add. Check that page numbers are correct.");
+                return;
             }
 
-            doc.catalog.set(PDFName.of("Outlines"), outlineRef);
-            doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
+            // Create Outline
+            const context = doc.context;
+            const refs = [];
+            
+            bookmarks.forEach(b => {
+                const pageRef = doc.getPages()[b.idx].ref;
+                const dict = context.obj({
+                    Title: PDFString.of(b.title),
+                    Dest: context.obj([pageRef, PDFName.of("XYZ"), null, null, null]),
+                    Parent: null
+                });
+                refs.push(context.register(dict));
+            });
+
+            if (refs.length > 0) {
+                const outlineDict = context.obj({
+                    Type: PDFName.of("Outlines"),
+                    First: refs[0],
+                    Last: refs[refs.length - 1],
+                    Count: refs.length
+                });
+                const outlineRef = context.register(outlineDict);
+
+                // Link Linked List
+                for (let i = 0; i < refs.length; i++) {
+                    const item = context.lookup(refs[i]);
+                    item.set(PDFName.of("Parent"), outlineRef);
+                    if (i > 0) item.set(PDFName.of("Prev"), refs[i - 1]);
+                    if (i < refs.length - 1) item.set(PDFName.of("Next"), refs[i + 1]);
+                }
+
+                doc.catalog.set(PDFName.of("Outlines"), outlineRef);
+                doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
+            }
+
+            const outBytes = await doc.save();
+            const blob = new Blob([outBytes], { type: "application/pdf" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = $("output-filename").value || "download.pdf";
+            link.click();
+        } catch (e) {
+            console.error("PDF Generation Error:", e);
+            alert("Error generating PDF: " + e.message);
         }
-
-        const outBytes = await doc.save();
-        const blob = new Blob([outBytes], { type: "application/pdf" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = $("output-filename").value || "download.pdf";
-        link.click();
     }
 
     // --- Event Listeners ---
@@ -395,10 +410,21 @@
             if (!url) return;
             if (WORKER_URL.includes("your-worker")) return alert("Please set WORKER_URL in code");
             
+            // Try to extract filename from URL
+            let filename = "Dropbox PDF";
+            try {
+                const urlObj = new URL(url);
+                const pathParts = urlObj.pathname.split("/");
+                const lastPart = pathParts[pathParts.length - 1];
+                if (lastPart && lastPart.includes(".pdf")) {
+                    filename = decodeURIComponent(lastPart.split("?")[0]);
+                }
+            } catch (e) { /* ignore */ }
+            
             try {
                 const res = await fetch(`${WORKER_URL}?url=${encodeURIComponent(url)}`);
                 if (!res.ok) throw new Error("Proxy Error");
-                loadPdf(await res.arrayBuffer(), "Dropbox PDF");
+                loadPdf(await res.arrayBuffer(), filename);
             } catch (e) {
                 $("url-error").textContent = e.message;
                 $("url-error").classList.remove("hidden");
