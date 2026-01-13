@@ -10,977 +10,425 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
-    :root {
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --success: #059669;
-      --danger: #dc2626;
-      --warning: #d97706;
-      --bg: #f8fafc;
-      --border: #e5e7eb;
-      --text: #111827;
-      --muted: #6b7280;
-    }
-
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      margin: 0;
-      padding: 22px;
-      max-width: 1000px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    h1 { margin: 0 0 14px; }
-
-    .card {
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 18px;
-      margin-bottom: 18px;
-      box-shadow: 0 1px 2px rgba(0,0,0,.04);
-    }
-
+    :root { --primary: #2563eb; --bg: #f8fafc; --border: #e5e7eb; --text: #111827; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; max-width: 900px; margin: 0 auto; }
+    h1 { margin-top: 0; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
     .hidden { display: none !important; }
+    
+    label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 0.9rem; }
+    input, button, select { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 10px; box-sizing: border-box; }
+    
+    button { cursor: pointer; font-weight: 600; border: 0; }
+    button.primary { background: var(--primary); color: white; }
+    button.secondary { background: #f1f5f9; color: #334155; }
+    button.success { background: #059669; color: white; }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .step-number {
-      display: inline-flex;
-      justify-content: center;
-      align-items: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 999px;
-      background: #e0e7ff;
-      color: #3730a3;
-      font-weight: 700;
-      margin-right: 8px;
-      font-size: 14px;
-    }
+    .row { display: flex; gap: 10px; align-items: flex-end; }
+    .col { flex: 1; }
 
-    label { display: block; font-weight: 600; margin-bottom: 6px; }
-    input, select, textarea {
-      width: 100%;
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      font-size: 14px;
-      box-sizing: border-box;
-      margin-bottom: 10px;
-    }
+    .status-box { padding: 10px; border-radius: 6px; font-size: 0.9rem; margin-top: 10px; }
+    .status-box.processing { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+    .status-box.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .status-box.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 
-    textarea { min-height: 110px; resize: vertical; }
-
-    button {
-      border: 0;
-      border-radius: 9px;
-      padding: 10px 12px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: .12s ease;
-    }
-
-    button.primary { background: var(--primary); color: #fff; }
-    button.primary:hover { background: var(--primary-hover); }
-    button.success { background: var(--success); color: #fff; }
-    button.secondary { background: #f3f4f6; color: #111827; }
-    button.secondary:hover { filter: brightness(.97); }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-
-    .status-box {
-      border-radius: 10px;
-      padding: 12px;
-      border: 1px solid var(--border);
-      background: #f9fafb;
-      color: #111827;
-      font-size: 14px;
-      margin-top: 10px;
-      overflow-wrap: anywhere;
-    }
-    .status-box.processing { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
-    .status-box.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-    .status-box.warning { background: #ffedd5; color: #9a3412; border: 1px solid #fed7aa; }
-    .status-box.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-
-    .toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      padding: 8px 0;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .preview-wrap {
-      display: flex;
-      gap: 14px;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      margin-top: 12px;
-    }
-
-    canvas {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: #fff;
-      max-width: 100%;
-      height: auto;
-    }
-
-    .chapter-row {
-      display: grid;
-      grid-template-columns: 26px 1fr 120px 34px;
-      gap: 10px;
-      align-items: center;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      margin-bottom: 10px;
-      background: #fff;
-    }
-
-    .chapter-row.invalid { border-color: #fecaca; background: #fef2f2; }
-    .chapter-row.warning { border-color: #fed7aa; background: #fff7ed; }
-
-    .drag-handle {
-      user-select: none;
-      cursor: grab;
-      color: #9ca3af;
-      font-size: 18px;
-      text-align: center;
-    }
-
-    .chapter-title, .chapter-page { margin-bottom: 0 !important; }
-
-    .del-btn {
-      background: #fee2e2;
-      color: #991b1b;
-      font-weight: 900;
-      border-radius: 8px;
-      padding: 8px;
-    }
-
-    .validation-msg {
-      grid-column: 1 / -1;
-      font-size: 12px;
-      color: #991b1b;
-      margin-top: 2px;
-      margin-left: 36px;
-    }
-
-    .small-note {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: -6px;
-      margin-bottom: 10px;
-    }
-
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+    /* Chapter List Styles */
+    .chapter-row { display: flex; gap: 8px; align-items: center; background: #fff; border: 1px solid var(--border); padding: 8px; border-radius: 6px; margin-bottom: 8px; }
+    .chapter-row.invalid { border-color: #fca5a5; background: #fef2f2; }
+    .drag-handle { cursor: grab; color: #94a3b8; padding: 0 5px; }
+    .del-btn { width: auto; background: #fee2e2; color: #991b1b; padding: 8px 12px; margin: 0; }
+    
+    canvas { border: 1px solid var(--border); max-width: 100%; height: auto; border-radius: 6px; margin-top: 10px; }
   </style>
 </head>
 
 <body>
-  <h1>📚 PDF ToC Tool (AI Backend)</h1>
+  <h1>📚 PDF ToC Tool</h1>
 
-  <!-- Step 1 -->
+  <!-- 1. Load PDF -->
   <div class="card">
-    <h2><span class="step-number">1</span> Select PDF</h2>
-
-    <div class="status-box" style="margin-top: 10px;">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
-        <!-- Backend URL hidden from UI, handled in JS -->
-        
-        <div style="width:160px;">
-          <label>AI scan pages</label>
-          <input type="number" id="ai-max-pages" value="40" min="1" max="200" />
-        </div>
-
-        <div style="display:flex; gap:10px; align-items:center;">
-          <span id="backend-status" style="color:#666; font-size:13px;">Connecting...</span>
-        </div>
+    <div class="row">
+      <div class="col">
+        <label>Backend Status</label>
+        <div id="backend-status" style="font-size: 0.9rem; color: #64748b;">Checking...</div>
+      </div>
+      <div class="col" style="flex: 0 0 150px;">
+        <label>AI Scan Pages</label>
+        <input type="number" id="ai-max-pages" value="40" min="1" max="200">
       </div>
     </div>
 
-    <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-start; margin-top: 12px;">
-      <div style="flex:1; min-width:200px;">
-        <label style="font-size: 0.9em;">From your computer</label>
+    <div class="row" style="margin-top: 15px;">
+      <div class="col">
+        <label>Upload PDF</label>
         <input type="file" id="pdf-file" accept=".pdf" />
       </div>
-
-      <div style="display:flex; align-items:center; color:#9ca3af; font-weight:700;">OR</div>
-
-      <div style="flex:2; min-width:280px;">
-        <label style="font-size: 0.9em;">From Dropbox URL</label>
-        <div style="display:flex; gap:8px;">
-          <input type="text" id="pdf-url" placeholder="https://www.dropbox.com/s/..." style="flex:1; margin-bottom:0;" />
-          <button id="load-url-btn" class="secondary">Load</button>
+      <div style="align-self: center; font-weight: bold; color: #94a3b8;">OR</div>
+      <div class="col">
+        <label>Dropbox URL</label>
+        <div style="display: flex; gap: 5px;">
+          <input type="text" id="pdf-url" placeholder="https://dropbox.com/..." style="margin:0;">
+          <button id="load-url-btn" class="secondary" style="width: auto; margin:0;">Load</button>
         </div>
-        <div class="small-note">Paste a Dropbox share link</div>
       </div>
     </div>
-
-    <div id="file-info-container" class="hidden" style="margin-top: 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-      <div id="file-info" style="font-weight: 700;"></div>
-      <button id="auto-detect-btn" class="secondary">✨ AI Auto Analyze PDF</button>
-    </div>
-
-    <div id="url-error" class="hidden" style="margin-top: 10px; padding:10px; background:#fee2e2; color:#991b1b; border-radius:8px; font-size:13px;"></div>
-
-    <div class="preview-wrap hidden" id="preview-wrap">
-      <div>
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
-          <button id="prev-page-btn" class="secondary">←</button>
-          <input id="preview-page-input" type="number" value="1" min="1" style="width:90px; margin-bottom:0;">
-          <button id="next-page-btn" class="secondary">→</button>
-          <select id="preview-scale" style="width: 150px; margin-bottom: 0;">
-            <option value="1">100%</option>
-            <option value="1.25">125%</option>
-            <option value="1.5" selected>150%</option>
-            <option value="2">200%</option>
-          </select>
-        </div>
-        <canvas id="preview-canvas"></canvas>
-        <div class="small-note">Click the AI button to populate ToC + chapters automatically.</div>
-      </div>
-    </div>
+    
+    <div id="url-error" class="status-box error hidden"></div>
+    <div id="file-info" class="status-box success hidden" style="margin-top: 10px; font-weight: bold;"></div>
   </div>
 
-  <!-- Step 2 -->
-  <div class="card hidden" id="step2">
-    <h2><span class="step-number">2</span> Page Offset</h2>
-    <p class="small-note">Configure how printed page numbers map to PDF pages. AI will fill this automatically.</p>
-
-    <div style="display:flex; gap:20px; flex-wrap:wrap;">
-      <div style="flex:1; min-width:250px;">
-        <label>Content starts on PDF page:</label>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input type="number" id="page-offset" value="1" min="1" style="width:100px; margin-bottom:0;">
-          <button id="set-offset-to-preview" class="secondary" style="padding:8px 10px;">← Use Current</button>
-          <button id="reset-offset" class="secondary" style="padding:8px 10px;">Reset</button>
+  <!-- 2. Preview & Offset -->
+  <div class="card hidden" id="step-preview">
+    <div class="row">
+      <div class="col">
+        <label>Content Start (PDF Page #)</label>
+        <div style="display: flex; gap: 5px;">
+          <input type="number" id="page-offset" value="1" min="1" style="margin:0;">
+          <button id="set-offset-btn" class="secondary" style="width:auto; margin:0;">Use Current</button>
         </div>
-
-        <div style="margin-top:12px;">
-          <label style="display:flex; gap:8px; align-items:center; font-weight:600;">
-            <input type="checkbox" id="custom-first-page-toggle" style="width:auto; margin:0;">
-            Document starts on a page other than 1
-          </label>
+        <div style="margin-top: 8px;">
+            <label style="display:inline; font-weight:normal;">
+                <input type="checkbox" id="custom-first-page-toggle" style="width:auto; display:inline-block;"> 
+                Doc starts at page # <input type="number" id="first-page-number" value="1" style="width: 60px; display:inline-block; padding: 4px;">
+            </label>
         </div>
-
-        <div id="custom-first-page-section" style="display:none; margin-top:10px; padding:12px; background:#fefce8; border:1px solid #fef08a; border-radius:8px;">
-          <label style="font-size: 0.9em;">First page number in document:</label>
-          <input type="number" id="first-page-number" value="1" min="1" style="width:140px; margin-bottom:0;">
-          <div class="small-note">Example: 407 for a journal issue</div>
+      </div>
+      <div class="col" style="flex: 2;">
+        <div style="display: flex; gap: 5px; align-items: center; justify-content: flex-end;">
+            <button id="prev-page" class="secondary" style="width:40px;">←</button>
+            <input type="number" id="preview-page-num" value="1" style="width:60px; margin:0; text-align:center;">
+            <button id="next-page" class="secondary" style="width:40px;">→</button>
         </div>
       </div>
     </div>
+    <canvas id="preview-canvas"></canvas>
   </div>
 
-  <!-- Step 3 -->
-  <div class="card hidden" id="step3">
-    <h2><span class="step-number">3</span> Chapters</h2>
-
-    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:16px;">
-      <div style="font-weight:800; color:#1d4ed8; margin-bottom:6px;">✨ AI Auto Analyze</div>
-      <div class="small-note">Uses your backend <code>/analyze-pdf-ai</code> to detect ToC range + chapters.</div>
-
-      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-        <button id="extract-btn" class="success">✨ Run AI Analysis</button>
-        <span id="page-range-hint" style="font-size:13px; color:#666;"></span>
-      </div>
-
-      <div id="extract-status" class="status-box hidden"></div>
-
-      <div style="margin-top:12px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
-        <label style="display:flex; gap:6px; align-items:center; font-weight:700;">
-          ToC start:
-          <input type="number" id="toc-start-page" value="1" min="1" style="width:90px; margin:0;">
-        </label>
-        <label style="display:flex; gap:6px; align-items:center; font-weight:700;">
-          ToC end:
-          <input type="number" id="toc-end-page" value="1" min="1" style="width:90px; margin:0;">
-        </label>
-        <button id="set-toc-current-btn" class="secondary">Set ToC to current page</button>
-      </div>
+  <!-- 3. Chapters -->
+  <div class="card hidden" id="step-chapters">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2 style="margin:0;">Chapters</h2>
+        <button id="run-ai-btn" class="success" style="width: auto;">✨ AI Auto-Detect</button>
     </div>
-
-    <div class="toolbar">Drag to reorder</div>
+    
+    <div id="ai-status" class="status-box hidden"></div>
 
     <div id="chapter-list"></div>
-
-    <button id="add-chapter-btn" class="secondary" style="width:100%;">+ Add Chapter Manually</button>
+    <button id="add-chapter-btn" class="secondary" style="margin-top: 10px;">+ Add Chapter</button>
   </div>
 
-  <!-- Step 4 -->
-  <div class="card hidden" id="step4">
-    <h2><span class="step-number">4</span> Generate PDF</h2>
-
-    <label style="font-size: 0.9em;">Output filename</label>
-    <input type="text" id="output-filename" placeholder="processed_document.pdf">
-
-    <button id="process-btn" class="success" style="width:100%; font-size:16px;">Download PDF with Bookmarks</button>
-    <div id="status" class="status-box hidden"></div>
+  <!-- 4. Download -->
+  <div class="card hidden" id="step-download">
+    <label>Output Filename</label>
+    <input type="text" id="output-filename" placeholder="book_with_toc.pdf">
+    <button id="download-btn" class="primary">Download PDF</button>
+    <div id="process-status" class="status-box hidden"></div>
   </div>
 
   <script>
-    const PDFJS_VERSION = "3.11.174";
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
-
-    // --- HARDCODED BACKEND URL ---
+    // --- CONFIGURATION ---
     const BACKEND_URL = "https://toc-ocr-482285058910.us-west3.run.app";
+    const WORKER_URL = "https://your-worker-subdomain.workers.dev"; // UPDATE THIS
 
-    function $(id) { return document.getElementById(id); }
+    const PDFJS_VERSION = "3.11.174";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
 
     // --- State ---
     let pdfDoc = null;
     let pdfBytes = null;
     let totalPages = 0;
-    let currentPreviewPage = 1;
+    let currentPage = 1;
 
-    // Page label state
-    let pageLabels = null;
-    let pageLabelIndexByLabel = null;
-    let detectedMaxRoman = 0;
+    function $(id) { return document.getElementById(id); }
 
-    // DOM refs
-    const chapterListEl = $("chapter-list");
-    const pageOffsetInput = $("page-offset");
+    // --- 1. Backend & Loading ---
+    async function checkBackend() {
+        try {
+            const res = await fetch(`${BACKEND_URL}/health`);
+            const data = await res.json();
+            const statusEl = $("backend-status");
+            if (data.gemini_available) {
+                statusEl.textContent = "● Online & AI Ready";
+                statusEl.style.color = "#166534";
+            } else {
+                statusEl.textContent = "● Online (AI Missing Key)";
+                statusEl.style.color = "#ca8a04";
+            }
+        } catch (e) {
+            $("backend-status").textContent = "● Offline";
+            $("backend-status").style.color = "#dc2626";
+        }
+    }
+
+    async function loadPdf(data, name) {
+        pdfBytes = data;
+        pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+        totalPages = pdfDoc.numPages;
+        
+        $("file-info").textContent = `Loaded: ${name} (${totalPages} pages)`;
+        $("file-info").classList.remove("hidden");
+        
+        ["step-preview", "step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
+        renderPreview(1);
+        
+        // Auto-run AI
+        runAiAnalysis();
+    }
+
+    // --- 2. Preview Logic ---
+    async function renderPreview(num) {
+        currentPage = Math.max(1, Math.min(totalPages, num));
+        $("preview-page-num").value = currentPage;
+        
+        const page = await pdfDoc.getPage(currentPage);
+        const viewport = page.getViewport({ scale: 1.5 });
+        const canvas = $("preview-canvas");
+        const ctx = canvas.getContext("2d");
+        
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+    }
+
+    // --- 3. AI Logic ---
+    async function runAiAnalysis() {
+        const statusEl = $("ai-status");
+        statusEl.classList.remove("hidden");
+        statusEl.className = "status-box processing";
+        statusEl.textContent = "AI is reading the PDF...";
+
+        const formData = new FormData();
+        formData.append("max_pages", $("ai-max-pages").value);
+        
+        // Decide source
+        const fileInput = $("pdf-file");
+        const urlInput = $("pdf-url");
+        
+        if (fileInput.files[0]) {
+            formData.append("pdf_file", fileInput.files[0]);
+        } else if (urlInput.value) {
+            formData.append("pdf_url", urlInput.value);
+        } else {
+            // Fallback for bytes loaded via proxy
+            const blob = new Blob([pdfBytes], { type: "application/pdf" });
+            formData.append("pdf_file", blob, "downloaded.pdf");
+        }
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/analyze-pdf-ai`, { method: "POST", body: formData });
+            if (!res.ok) throw new Error(await res.text());
+            
+            const data = await res.json();
+            
+            // Apply AI Findings
+            if (data.content_start_pdf_page) $("page-offset").value = data.content_start_pdf_page;
+            if (data.first_page_number) $("first-page-number").value = data.first_page_number;
+            
+            // Populate Chapters
+            const list = $("chapter-list");
+            list.innerHTML = "";
+            (data.entries || []).forEach(entry => addChapterRow(entry.title, entry.page));
+            
+            statusEl.className = "status-box success";
+            statusEl.textContent = `Success! Found ${data.entries.length} chapters.`;
+        } catch (e) {
+            statusEl.className = "status-box error";
+            statusEl.textContent = "AI Error: " + e.message;
+        }
+    }
+
+    // --- 4. Chapter UI & Math ---
+    function addChapterRow(title = "", page = "") {
+        const div = document.createElement("div");
+        div.className = "chapter-row";
+        div.innerHTML = `
+            <span class="drag-handle">☰</span>
+            <input type="text" class="ch-title" value="${escapeHtml(title)}" placeholder="Title">
+            <input type="text" class="ch-page" value="${page}" placeholder="Page" style="width: 80px;">
+            <button class="del-btn">×</button>
+        `;
+        
+        // Events
+        div.querySelector(".del-btn").onclick = () => div.remove();
+        div.querySelector(".ch-page").oninput = () => validateRow(div);
+        
+        // Drag Logic (Simplified)
+        const handle = div.querySelector(".drag-handle");
+        handle.draggable = true;
+        handle.ondragstart = () => div.classList.add("dragging");
+        handle.ondragend = () => div.classList.remove("dragging");
+        
+        $("chapter-list").appendChild(div);
+        validateRow(div);
+    }
+
+    // --- THE CRITICAL MATH LOGIC (Must Keep) ---
+    function validateRow(row) {
+        const val = row.querySelector(".ch-page").value;
+        const idx = calculatePdfIndex(val);
+        if (idx === null) row.classList.add("invalid");
+        else row.classList.remove("invalid");
+    }
+
+    function calculatePdfIndex(token) {
+        token = String(token).trim().toLowerCase();
+        if (!token) return null;
+
+        // 1. Handle "pdf:5" syntax (direct PDF page)
+        const directMatch = token.match(/^pdf:(\d+)$/);
+        if (directMatch) return parseInt(directMatch[1]) - 1;
+
+        // 2. Get Offsets
+        const contentStart = parseInt($("page-offset").value) || 1; // e.g., PDF Page 15
+        const firstPrintedNum = parseInt($("first-page-number").value) || 1; // e.g., Printed Page 1
+
+        // 3. Handle Roman Numerals (iv -> 4)
+        if (/^[ivxlcdm]+$/.test(token)) {
+            const val = romanToInt(token);
+            // Logic: If content starts at PDF 15, and we have roman 'iv' (4),
+            // usually roman numerals are BEFORE the content start.
+            // This is a simple heuristic: place them relative to content start.
+            // Or, if the document is ALL roman, this might need tweaking, 
+            // but usually roman = front matter.
+            return (contentStart - 1) - (10 - val); // Rough guess for front matter, usually user adjusts offset
+        }
+
+        // 4. Handle Arabic Numerals (12 -> ?)
+        const pageNum = parseInt(token);
+        if (isNaN(pageNum)) return null;
+
+        // Formula: (Printed Page - First Printed Page) + (PDF Page where content starts - 1)
+        const pdfIndex = (pageNum - firstPrintedNum) + (contentStart - 1);
+        
+        if (pdfIndex < 0 || pdfIndex >= totalPages) return null;
+        return pdfIndex;
+    }
+
+    function romanToInt(s) {
+        const map = { i:1, v:5, x:10, l:50, c:100, d:500, m:1000 };
+        let res = 0, prev = 0;
+        for (let i = s.length - 1; i >= 0; i--) {
+            const val = map[s[i]];
+            res += val < prev ? -val : val;
+            prev = val;
+        }
+        return res;
+    }
 
     function escapeHtml(str) {
-      if (str == null) return "";
-      return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     }
 
-    function setBackendStatus(text, isError=false) {
-      const el = $("backend-status");
-      if (!el) return;
-      el.textContent = text || "";
-      el.style.color = isError ? "#b91c1c" : "#059669";
-    }
-
-    async function testBackend() {
-      setBackendStatus("Checking backend...");
-      try {
-        const res = await fetch(`${BACKEND_URL}/health`);
-        if (!res.ok) { setBackendStatus(`Backend error (${res.status}).`, true); return { ok:false, gemini_available:false }; }
-        const data = await res.json();
-        const gem = !!data.gemini_available;
-        
-        if (gem) {
-            setBackendStatus("● Backend Connected & AI Ready");
-        } else {
-            setBackendStatus("● Backend Connected (AI Unavailable - Check Server Logs)", true);
-        }
-        return { ok:true, gemini_available:gem };
-      } catch {
-        setBackendStatus("Cannot reach backend.", true);
-        return { ok:false, gemini_available:false };
-      }
-    }
-
-    function showAiStatus(text, kind="processing") {
-      const box = $("extract-status");
-      box.classList.remove("hidden");
-      box.className = `status-box ${kind}`;
-      box.innerHTML = text;
-    }
-
-    // --- PDF Load helpers ---
-    async function loadPdfFromBytes(bytes, filename="document.pdf") {
-      pdfBytes = bytes;
-      const loadingTask = pdfjsLib.getDocument({ data: bytes });
-      pdfDoc = await loadingTask.promise;
-      totalPages = pdfDoc.numPages;
-
-      $("file-info").textContent = `${filename} | ${totalPages} pages`;
-      $("file-info-container").classList.remove("hidden");
-
-      $("preview-wrap").classList.remove("hidden");
-      ["step2", "step3", "step4"].forEach(id => $(id).classList.remove("hidden"));
-
-      renderPreview(1);
-
-      // Auto-run AI after load
-      await aiAnalyzePdf();
-    }
-
-    async function loadFromUrl() {
-      const urlInput = $("pdf-url");
-      const errorEl = $("url-error");
-      const url = (urlInput.value || "").trim();
-      const btn = $("load-url-btn");
-
-      errorEl.classList.add("hidden");
-
-      if (!url) {
-        errorEl.textContent = "Please enter a URL";
-        errorEl.classList.remove("hidden");
-        return;
-      }
-
-      btn.disabled = true;
-      btn.textContent = "Downloading...";
-
-      try {
-        // Use the backend proxy to avoid CORS issues with Dropbox
-        const proxyUrl = `${BACKEND_URL}/fetch-pdf?url=${encodeURIComponent(url)}`;
-        
-        const res = await fetch(proxyUrl);
-        if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`Backend failed to fetch PDF: ${res.status} - ${errText}`);
-        }
-        
-        const bytes = await res.arrayBuffer();
-        await loadPdfFromBytes(bytes, "Dropbox PDF");
-      } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.classList.remove("hidden");
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Load";
-      }
-    }
-
-    // --- Preview ---
-    async function renderPreview(pageNum) {
-      if (!pdfDoc) return;
-      currentPreviewPage = Math.max(1, Math.min(totalPages, pageNum));
-      $("preview-page-input").value = currentPreviewPage;
-
-      const page = await pdfDoc.getPage(currentPreviewPage);
-      const scale = Number($("preview-scale").value || 1.5);
-      const viewport = page.getViewport({ scale });
-
-      const canvas = $("preview-canvas");
-      const ctx = canvas.getContext("2d");
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-
-      await page.render({ canvasContext: ctx, viewport }).promise;
-    }
-
-    function previewPage(delta) {
-      renderPreview(currentPreviewPage + delta);
-    }
-
-    function setTocRangeFromCurrentPage() {
-      $("toc-start-page").value = currentPreviewPage;
-      $("toc-end-page").value = currentPreviewPage;
-    }
-
-    // --- Chapter list ---
-    function addChapterWithData(title, page) {
-      const row = document.createElement("div");
-      row.className = "chapter-row";
-
-      const handle = document.createElement("span");
-      handle.className = "drag-handle";
-      handle.textContent = "⋮⋮";
-      handle.draggable = true;
-
-      const titleInput = document.createElement("input");
-      titleInput.type = "text";
-      titleInput.className = "chapter-title";
-      titleInput.value = title || "";
-      titleInput.placeholder = "Title";
-
-      const pageInput = document.createElement("input");
-      pageInput.type = "text";
-      pageInput.className = "chapter-page";
-      pageInput.value = page || "";
-      pageInput.placeholder = "Pg (e.g., 12, iv, pdf:7)";
-
-      const del = document.createElement("button");
-      del.className = "del-btn";
-      del.textContent = "×";
-      del.onclick = () => row.remove();
-
-      const msg = document.createElement("div");
-      msg.className = "validation-msg";
-
-      row.appendChild(handle);
-      row.appendChild(titleInput);
-      row.appendChild(pageInput);
-      row.appendChild(del);
-      row.appendChild(msg);
-
-      // Drag reorder
-      handle.addEventListener("dragstart", (e) => {
-        row.classList.add("dragging");
-        e.dataTransfer.effectAllowed = "move";
-      });
-      handle.addEventListener("dragend", () => row.classList.remove("dragging"));
-      row.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        const dragging = document.querySelector(".dragging");
-        if (dragging && dragging !== row) {
-          const box = row.getBoundingClientRect();
-          const offset = e.clientY - box.top - box.height / 2;
-          if (offset < 0) row.parentNode.insertBefore(dragging, row);
-          else row.parentNode.insertBefore(dragging, row.nextSibling);
-        }
-      });
-
-      pageInput.addEventListener("input", () => validateChapterRow(row));
-      pageInput.addEventListener("change", () => validateChapterRow(row));
-
-      chapterListEl.appendChild(row);
-      validateChapterRow(row);
-    }
-
-    function resetChapters() {
-      chapterListEl.innerHTML = "";
-    }
-
-    function addChapter() {
-      addChapterWithData("", "");
-      const rows = chapterListEl.querySelectorAll(".chapter-row");
-      const lastRow = rows[rows.length - 1];
-      if (lastRow) lastRow.querySelector(".chapter-title").focus();
-    }
-
-    function sortChapters() {
-      const rows = Array.from(chapterListEl.children);
-      rows.sort((a, b) => getPageFromRow(a) - getPageFromRow(b));
-      chapterListEl.innerHTML = "";
-      rows.forEach(r => chapterListEl.appendChild(r));
-    }
-
-    // --- Page token mapping ---
-    function isRomanNumeralToken(token) {
-      return /^[ivxlcdm]+$/i.test(token) && isNaN(token);
-    }
-
-    function normalizePageToken(token) {
-      let t = (token || "").trim();
-      if (!t) return "";
-
-      t = t.replace(/\b(page|pages|pagina|paginas|seite)\b/gi, "");
-      t = t.replace(/\bp\.?\s*/gi, "");
-      t = t.replace(/\bpp\.?\s*/gi, "");
-
-      t = t.replace(/^[\s.)\],:;\-–—([\[]+/, "");
-      t = t.replace(/[\s.)\],:;\-–—\]\[]+$/, "");
-
-      t = t.trim();
-
-      if (/^\d+$/.test(t)) return t;
-      if (/^[ivxlcdm]+$/i.test(t)) return t;
-
-      const numMatch = t.match(/(\d+)/);
-      if (numMatch) return numMatch[1];
-
-      const romanMatch = t.match(/\b([ivxlcdm]+)\b/i);
-      if (romanMatch) return romanMatch[1];
-
-      return t;
-    }
-
-    function safeParseInt(x) {
-      const n = parseInt(String(x).trim(), 10);
-      return Number.isFinite(n) ? n : NaN;
-    }
-
-    function romanToInt(roman) {
-      const s = String(roman || "").toLowerCase();
-      if (!/^[ivxlcdm]+$/.test(s)) return NaN;
-
-      const map = { i:1, v:5, x:10, l:50, c:100, d:500, m:1000 };
-      let total = 0;
-      let prev = 0;
-
-      for (let i = s.length - 1; i >= 0; i--) {
-        const val = map[s[i]] || 0;
-        if (val < prev) total -= val;
-        else { total += val; prev = val; }
-      }
-      return total > 0 ? total : NaN;
-    }
-
-    function pageTokenToPdfIndex(token, options = {}) {
-      const { allowRawPdfPage = false } = options;
-      const raw = String(token || "").trim();
-
-      const m = raw.match(/^pdf\s*:\s*(\d+)$/i);
-      if (m) {
-        const pdfPage = parseInt(m[1], 10);
-        if (Number.isFinite(pdfPage) && pdfPage >= 1 && pdfPage <= totalPages) {
-          return { index: pdfPage - 1, isRawPdfPage: true };
-        }
-        return null;
-      }
-
-      const t = normalizePageToken(token).toLowerCase();
-      if (!t) return null;
-
-      const firstPageNum = safeParseInt($("first-page-number").value) || 1;
-      const contentStartPdf = safeParseInt(pageOffsetInput.value) || 1;
-
-      if (/^\d+$/.test(t)) {
-        const pageNum = safeParseInt(t);
-        if (!Number.isFinite(pageNum) || pageNum < 1) return null;
-
-        const pdfIndex = (pageNum - firstPageNum) + (contentStartPdf - 1);
-
-        if (pdfIndex >= 0 && pdfIndex < totalPages) return pdfIndex;
-
-        const rawPdfIndex = pageNum - 1;
-        if (rawPdfIndex >= 0 && rawPdfIndex < totalPages) return { index: rawPdfIndex, isRawPdfPage: true };
-
-        return null;
-      }
-
-      if (isRomanNumeralToken(t)) {
-        if (pageLabelIndexByLabel && pageLabelIndexByLabel.has(t)) {
-          return pageLabelIndexByLabel.get(t);
-        }
-
-        const rv = romanToInt(t);
-
-        if (Number.isFinite(rv) && rv > 0 && detectedMaxRoman > 0 && contentStartPdf > 1) {
-          const pdfIndex = contentStartPdf - detectedMaxRoman + rv - 2;
-          return (pdfIndex >= 0 && pdfIndex < totalPages) ? pdfIndex : null;
-        }
-
-        if (Number.isFinite(rv) && rv > 0 && rv <= totalPages) return rv - 1;
-      }
-
-      return null;
-    }
-
-    function getPdfIndexValue(result) {
-      if (result === null) return null;
-      if (typeof result === "number") return result;
-      if (typeof result === "object" && result.index !== undefined) return result.index;
-      return null;
-    }
-
-    function getPageFromRow(row) {
-      const token = row.querySelector(".chapter-page").value.trim();
-      const result = pageTokenToPdfIndex(token);
-      const idx = getPdfIndexValue(result);
-      return idx === null ? 999999 : idx;
-    }
-
-    function validateChapterRow(row) {
-      const pageInput = row.querySelector(".chapter-page");
-      const token = (pageInput.value || "").trim();
-      const msgEl = row.querySelector(".validation-msg");
-
-      if (!totalPages) {
-        row.classList.remove("invalid");
-        row.classList.remove("warning");
-        if (msgEl) msgEl.textContent = "";
-        return true;
-      }
-
-      if (!token) {
-        row.classList.remove("invalid");
-        row.classList.remove("warning");
-        if (msgEl) msgEl.textContent = "";
-        return true;
-      }
-
-      const result = pageTokenToPdfIndex(token);
-      const pdfIndex = getPdfIndexValue(result);
-
-      if (pdfIndex === null) {
-        row.classList.add("invalid");
-        row.classList.remove("warning");
-        if (msgEl) msgEl.textContent = `Cannot map "${token}" to a PDF page.`;
-        return false;
-      }
-
-      if (typeof result === "object" && result.isRawPdfPage) {
-        row.classList.remove("invalid");
-        row.classList.add("warning");
-        if (msgEl) msgEl.textContent = `Using as PDF page ${pdfIndex + 1} directly.`;
-        msgEl.style.color = "#92400e";
-        return true;
-      }
-
-      row.classList.remove("invalid");
-      row.classList.remove("warning");
-      if (msgEl) {
-        msgEl.textContent = "";
-        msgEl.style.color = "";
-      }
-      return true;
-    }
-
-    // --- AI Analyze ---
-    async function aiAnalyzePdf() {
-      const health = await testBackend();
-      if (!health.ok) {
-        showAiStatus("Cannot reach backend. Check connection.", "error");
-        return;
-      }
-      if (!health.gemini_available) {
-        showAiStatus("Backend reachable but AI unavailable. <b>Server missing GOOGLE_API_KEY.</b>", "warning");
-        return;
-      }
-
-      const form = new FormData();
-      form.append("max_pages", String(Number($("ai-max-pages").value || 40)));
-
-      const urlVal = ($("pdf-url").value || "").trim();
-      if (pdfBytes) {
-        const blob = new Blob([pdfBytes], { type: "application/pdf" });
-        const filename = ($("pdf-file").files?.[0]?.name) || "document.pdf";
-        form.append("pdf_file", blob, filename);
-      } else if (urlVal) {
-        form.append("pdf_url", urlVal);
-      } else {
-        showAiStatus("Load a PDF file or URL first.", "error");
-        return;
-      }
-
-      showAiStatus("Running AI analysis…", "processing");
-      try {
-        const res = await fetch(`${BACKEND_URL}/analyze-pdf-ai`, { method:"POST", body: form });
-        if (!res.ok) {
-          const msg = await res.text();
-          showAiStatus(`AI analysis failed (${res.status}): ${escapeHtml(msg)}`, "error");
-          return;
-        }
-
-        const data = await res.json();
-
-        if (data.toc_start_page) $("toc-start-page").value = data.toc_start_page;
-        if (data.toc_end_page) $("toc-end-page").value = data.toc_end_page;
-
-        if (data.content_start_pdf_page) $("page-offset").value = data.content_start_pdf_page;
-
-        const firstNum = Number(data.first_page_number || 1);
-        $("custom-first-page-toggle").checked = firstNum !== 1;
-        $("first-page-number").value = String(firstNum);
-        $("custom-first-page-section").style.display = $("custom-first-page-toggle").checked ? "block" : "none";
-
-        resetChapters();
-        const entries = data.entries || [];
-        if (!entries.length) addChapterWithData("", "");
-        else entries.forEach(e => addChapterWithData(e.title || "", String(e.page || "")));
-
-        const conf = data.confidence ? `<div><b>Confidence:</b> ${escapeHtml(data.confidence)}</div>` : "";
-        const notes = data.notes ? `<div style="margin-top:6px;"><b>Notes:</b> ${escapeHtml(data.notes)}</div>` : "";
-        showAiStatus(`✅ AI analysis complete.${conf}${notes}`, "success");
-      } catch {
-        showAiStatus("AI analysis failed due to a network error.", "error");
-      }
-    }
-
-    // --- PDF Generation ---
-    async function processPdf() {
-      if (!pdfBytes) return alert("No PDF loaded");
-
-      const rows = Array.from(chapterListEl.querySelectorAll(".chapter-row"));
-      let lastPage = -Infinity;
-      let isUnsorted = false;
-
-      for (const row of rows) {
-        const idx = getPageFromRow(row);
-        if (idx === 999999) continue;
-        if (idx < lastPage) {
-          isUnsorted = true;
-          break;
-        }
-        lastPage = idx;
-      }
-
-      if (isUnsorted) {
-        const shouldSort = confirm("Chapters are not in page order. Sort them now before generating?\n\nClick OK to sort, or Cancel to proceed without sorting.");
-        if (shouldSort) sortChapters();
-      }
-
-      const btn = $("process-btn");
-      const status = $("status");
-      btn.disabled = true;
-      status.className = "status-box processing";
-      status.classList.remove("hidden");
-      status.textContent = "Generating PDF...";
-
-      try {
-        const { PDFDocument, PDFName, PDFNumber, PDFString } = PDFLib;
+    // --- 5. PDF Generation ---
+    async function generatePdf() {
+        const { PDFDocument, PDFName, PDFString } = PDFLib;
         const doc = await PDFDocument.load(pdfBytes);
-        const context = doc.context;
+        
+        const rows = document.querySelectorAll(".chapter-row");
+        const bookmarks = [];
 
-        const firstPageNum = safeParseInt($("first-page-number").value) || 1;
-        const contentStartPdf = safeParseInt(pageOffsetInput.value) || 1;
-
-        const outlineItems = [];
-        const skippedItems = [];
-
-        if (contentStartPdf > 1) {
-          outlineItems.push({ title: "Front Matter", pageIndex: 0 });
-        }
-
-        chapterListEl.querySelectorAll(".chapter-row").forEach(row => {
-          const title = row.querySelector(".chapter-title").value.trim();
-          const pageVal = row.querySelector(".chapter-page").value.trim();
-          if (!title || !pageVal) return;
-
-          const result = pageTokenToPdfIndex(pageVal);
-          const pdfIndex = getPdfIndexValue(result);
-
-          if (pdfIndex === null) {
-            skippedItems.push({ title, pageVal, reason: "Cannot map page token to a PDF page" });
-            return;
-          }
-
-          outlineItems.push({ title, pageIndex: pdfIndex });
+        rows.forEach(row => {
+            const title = row.querySelector(".ch-title").value;
+            const pageStr = row.querySelector(".ch-page").value;
+            const idx = calculatePdfIndex(pageStr);
+            
+            if (idx !== null && title) {
+                bookmarks.push({ title, idx });
+            }
         });
 
-        if (outlineItems.length > 0) {
-          const refs = [];
-          for (const item of outlineItems) {
-            const pageRef = doc.getPages()[item.pageIndex].ref;
+        // Create Outline
+        const context = doc.context;
+        const refs = [];
+        
+        bookmarks.forEach(b => {
+            const pageRef = doc.getPages()[b.idx].ref;
             const dict = context.obj({
-              Title: PDFString.of(item.title),
-              Dest: context.obj([pageRef, PDFName.of("XYZ"), null, null, null]),
-              Parent: null
+                Title: PDFString.of(b.title),
+                Dest: context.obj([pageRef, PDFName.of("XYZ"), null, null, null]),
+                Parent: null
             });
             refs.push(context.register(dict));
-          }
+        });
 
-          const outlineDict = context.obj({
-            Type: PDFName.of("Outlines"),
-            First: refs[0],
-            Last: refs[refs.length - 1],
-            Count: PDFNumber.of(refs.length)
-          });
+        if (refs.length > 0) {
+            const outlineDict = context.obj({
+                Type: PDFName.of("Outlines"),
+                First: refs[0],
+                Last: refs[refs.length - 1],
+                Count: refs.length
+            });
+            const outlineRef = context.register(outlineDict);
 
-          const outlineRef = context.register(outlineDict);
+            // Link Linked List
+            for (let i = 0; i < refs.length; i++) {
+                const item = context.lookup(refs[i]);
+                item.set(PDFName.of("Parent"), outlineRef);
+                if (i > 0) item.set(PDFName.of("Prev"), refs[i - 1]);
+                if (i < refs.length - 1) item.set(PDFName.of("Next"), refs[i + 1]);
+            }
 
-          for (let i = 0; i < refs.length; i++) {
-            const item = context.lookup(refs[i]);
-            item.set(PDFName.of("Parent"), outlineRef);
-            if (i > 0) item.set(PDFName.of("Prev"), refs[i - 1]);
-            if (i < refs.length - 1) item.set(PDFName.of("Next"), refs[i + 1]);
-          }
-
-          doc.catalog.set(PDFName.of("Outlines"), outlineRef);
-          doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
+            doc.catalog.set(PDFName.of("Outlines"), outlineRef);
+            doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
         }
 
-        // Page labels
-        const nums = [];
-        if (contentStartPdf > 1) {
-          nums.push(PDFNumber.of(0));
-          nums.push(context.obj({ S: PDFName.of("r"), St: PDFNumber.of(1) }));
-          nums.push(PDFNumber.of(contentStartPdf - 1));
-          nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(firstPageNum) }));
-        } else {
-          nums.push(PDFNumber.of(0));
-          nums.push(context.obj({ S: PDFName.of("D"), St: PDFNumber.of(firstPageNum) }));
-        }
-        const labelsDict = context.obj({ Nums: nums });
-        doc.catalog.set(PDFName.of("PageLabels"), context.register(labelsDict));
-
-        const data = await doc.save();
-        const blob = new Blob([data], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-
-        let outputFilename = $("output-filename").value.trim();
-        if (!outputFilename) outputFilename = "processed_document.pdf";
-        else if (!outputFilename.toLowerCase().endsWith(".pdf")) outputFilename += ".pdf";
-
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = outputFilename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        const chapterCount = outlineItems.length - (contentStartPdf > 1 ? 1 : 0);
-        if (skippedItems.length > 0) {
-          status.className = "status-box warning";
-          status.textContent = "";
-          status.appendChild(document.createTextNode(
-            `PDF generated with ${outlineItems.length} bookmarks (${chapterCount} chapters${contentStartPdf > 1 ? " + Front Matter" : ""}). `
-          ));
-
-          const skippedDiv = document.createElement("div");
-          skippedDiv.style.marginTop = "10px";
-
-          const strongEl = document.createElement("strong");
-          strongEl.textContent = `${skippedItems.length} chapter(s) skipped:`;
-          skippedDiv.appendChild(strongEl);
-
-          const ul = document.createElement("ul");
-          ul.style.margin = "8px 0 0 18px";
-          for (const item of skippedItems) {
-            const li = document.createElement("li");
-            li.textContent = `"${item.title}" (page ${item.pageVal}) - ${item.reason}`;
-            ul.appendChild(li);
-          }
-          skippedDiv.appendChild(ul);
-          status.appendChild(skippedDiv);
-        } else {
-          status.className = "status-box success";
-          status.textContent = `PDF generated with ${outlineItems.length} bookmarks (${chapterCount} chapters${contentStartPdf > 1 ? " + Front Matter" : ""}).`;
-        }
-      } catch (err) {
-        console.error(err);
-        const status = $("status");
-        status.className = "status-box error";
-        status.textContent = "Error: " + err.message;
-      } finally {
-        $("process-btn").disabled = false;
-      }
+        const outBytes = await doc.save();
+        const blob = new Blob([outBytes], { type: "application/pdf" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = $("output-filename").value || "download.pdf";
+        link.click();
     }
 
-    // --- Events ---
+    // --- Event Listeners ---
     document.addEventListener("DOMContentLoaded", () => {
-      $("pdf-file").addEventListener("change", async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const bytes = await file.arrayBuffer();
-        await loadPdfFromBytes(bytes, file.name);
-      });
+        checkBackend();
+        
+        $("pdf-file").onchange = async (e) => {
+            if (e.target.files[0]) loadPdf(await e.target.files[0].arrayBuffer(), e.target.files[0].name);
+        };
 
-      $("load-url-btn").addEventListener("click", loadFromUrl);
-      $("auto-detect-btn").addEventListener("click", aiAnalyzePdf);
-      $("extract-btn").addEventListener("click", aiAnalyzePdf);
+        $("load-url-btn").onclick = async () => {
+            const url = $("pdf-url").value;
+            if (!url) return;
+            if (WORKER_URL.includes("your-worker")) return alert("Please set WORKER_URL in code");
+            
+            try {
+                const res = await fetch(`${WORKER_URL}?url=${encodeURIComponent(url)}`);
+                if (!res.ok) throw new Error("Proxy Error");
+                loadPdf(await res.arrayBuffer(), "Dropbox PDF");
+            } catch (e) {
+                $("url-error").textContent = e.message;
+                $("url-error").classList.remove("hidden");
+            }
+        };
 
-      $("prev-page-btn").addEventListener("click", () => previewPage(-1));
-      $("next-page-btn").addEventListener("click", () => previewPage(1));
-      $("preview-scale").addEventListener("change", () => renderPreview(currentPreviewPage));
-      $("preview-page-input").addEventListener("change", () => renderPreview(Number($("preview-page-input").value || 1)));
+        $("prev-page").onclick = () => renderPreview(currentPage - 1);
+        $("next-page").onclick = () => renderPreview(currentPage + 1);
+        $("preview-page-num").onchange = (e) => renderPreview(parseInt(e.target.value));
+        
+        $("set-offset-btn").onclick = () => {
+            $("page-offset").value = currentPage;
+            document.querySelectorAll(".chapter-row").forEach(validateRow);
+        };
 
-      $("set-toc-current-btn").addEventListener("click", setTocRangeFromCurrentPage);
-
-      $("custom-first-page-toggle").addEventListener("change", () => {
-        const checked = $("custom-first-page-toggle").checked;
-        $("custom-first-page-section").style.display = checked ? "block" : "none";
-        if (!checked) {
-          $("first-page-number").value = "1";
-        }
-        Array.from(chapterListEl.querySelectorAll(".chapter-row")).forEach(r => validateChapterRow(r));
-      });
-
-      $("set-offset-to-preview").addEventListener("click", () => {
-        $("page-offset").value = currentPreviewPage;
-        Array.from(chapterListEl.querySelectorAll(".chapter-row")).forEach(r => validateChapterRow(r));
-      });
-
-      $("reset-offset").addEventListener("click", () => {
-        $("page-offset").value = 1;
-        Array.from(chapterListEl.querySelectorAll(".chapter-row")).forEach(r => validateChapterRow(r));
-      });
-
-      $("add-chapter-btn").addEventListener("click", addChapter);
-      $("process-btn").addEventListener("click", processPdf);
-
-      testBackend();
+        $("run-ai-btn").onclick = runAiAnalysis;
+        $("add-chapter-btn").onclick = () => addChapterRow();
+        $("download-btn").onclick = generatePdf;
+        
+        // Drag & Drop Reordering
+        const list = $("chapter-list");
+        list.ondragover = (e) => {
+            e.preventDefault();
+            const dragging = document.querySelector(".dragging");
+            const siblings = [...list.querySelectorAll(".chapter-row:not(.dragging)")];
+            const nextSibling = siblings.find(sibling => {
+                return e.clientY <= sibling.getBoundingClientRect().top + sibling.offsetHeight / 2;
+            });
+            list.insertBefore(dragging, nextSibling);
+        };
     });
   </script>
 </body>
