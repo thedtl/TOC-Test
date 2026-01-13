@@ -1,21 +1,45 @@
-    
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF ToC Tool (AI Backend)</title>
+  <title>PDF Bookmark Creator</title>
 
   <!-- Libraries -->
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
-    :root { --primary: #2563eb; --bg: #f8fafc; --border: #e5e7eb; --text: #111827; }
+    :root { --primary: #2563eb; --bg: #f8fafc; --border: #e5e7eb; --text: #111827; --success: #059669; }
     body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; max-width: 900px; margin: 0 auto; }
     h1 { margin-top: 0; }
     .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
     .hidden { display: none !important; }
+    
+    .step-header { 
+        display: flex; 
+        align-items: center; 
+        gap: 12px; 
+        margin-bottom: 15px;
+    }
+    .step-number {
+        background: var(--primary);
+        color: white;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+    }
+    .step-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0;
+    }
     
     label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 0.9rem; }
     input, button, select { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 10px; box-sizing: border-box; }
@@ -23,7 +47,7 @@
     button { cursor: pointer; font-weight: 600; border: 0; }
     button.primary { background: var(--primary); color: white; }
     button.secondary { background: #f1f5f9; color: #334155; }
-    button.success { background: #059669; color: white; }
+    button.success { background: var(--success); color: white; }
     button:hover { opacity: 0.9; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -41,11 +65,9 @@
     
     .drag-handle { cursor: grab; color: #94a3b8; padding: 0 5px; }
     
-    /* Inputs in row */
     .ch-title { flex: 1; margin-bottom: 0; }
     .ch-page { width: 70px !important; margin-bottom: 0; text-align: center; }
 
-    /* Buttons in row */
     .verify-btn {
         width: auto !important;
         font-size: 0.75rem;
@@ -60,33 +82,71 @@
     .del-btn { width: auto !important; background: #fee2e2; color: #991b1b; padding: 6px 12px; margin: 0; }
     
     canvas { border: 1px solid var(--border); max-width: 100%; height: auto; border-radius: 6px; margin-top: 10px; }
+    
+    /* Big Download Button */
+    .download-section {
+        text-align: center;
+        padding: 20px;
+    }
+    .big-download-btn {
+        font-size: 1.2rem;
+        padding: 16px 32px;
+        background: var(--success);
+        color: white;
+        border-radius: 8px;
+        width: auto;
+        display: inline-block;
+    }
+    .big-download-btn:hover {
+        background: #047857;
+    }
+    
+    /* Backend status - smaller */
+    .backend-info {
+        font-size: 0.8rem;
+        color: #64748b;
+        text-align: right;
+        margin-bottom: 10px;
+    }
+    
+    /* Start over button */
+    .start-over-btn {
+        background: transparent;
+        color: #64748b;
+        border: 1px solid #e5e7eb;
+        font-size: 0.85rem;
+        padding: 8px 16px;
+        width: auto;
+    }
+    .start-over-btn:hover {
+        background: #f1f5f9;
+        color: #334155;
+    }
   </style>
 </head>
 
 <body>
-  <h1>📚 PDF ToC Tool</h1>
+  <h1>📚 PDF Bookmark Creator</h1>
+  
+  <div class="backend-info">
+    Status: <span id="backend-status">Checking...</span>
+  </div>
 
-  <!-- 1. Load PDF -->
-  <div class="card">
-    <div class="row">
-      <div class="col">
-        <label>Backend Status</label>
-        <div id="backend-status" style="font-size: 0.9rem; color: #64748b;">Checking...</div>
-      </div>
-      <div class="col" style="flex: 0 0 150px;">
-        <label>AI Scan Pages</label>
-        <input type="number" id="ai-max-pages" value="40" min="1" max="200">
-      </div>
+  <!-- Step 1: Upload PDF -->
+  <div class="card" id="step-upload">
+    <div class="step-header">
+      <div class="step-number">1</div>
+      <h2 class="step-title">Upload Your PDF</h2>
     </div>
 
-    <div class="row" style="margin-top: 15px;">
+    <div class="row">
       <div class="col">
-        <label>Upload PDF</label>
+        <label>Choose a file from your computer</label>
         <input type="file" id="pdf-file" accept=".pdf" />
       </div>
       <div style="align-self: center; font-weight: bold; color: #94a3b8;">OR</div>
       <div class="col">
-        <label>Dropbox URL</label>
+        <label>Paste a Dropbox link</label>
         <div style="display: flex; gap: 5px;">
           <input type="text" id="pdf-url" placeholder="https://dropbox.com/..." style="margin:0;">
           <button id="load-url-btn" class="secondary" style="width: auto; margin:0;">Load</button>
@@ -95,27 +155,36 @@
     </div>
     
     <div id="url-error" class="status-box error hidden"></div>
-    <div id="file-info" class="status-box success hidden" style="margin-top: 10px; font-weight: bold;"></div>
+    <div id="file-info" class="status-box success hidden"></div>
   </div>
 
-  <!-- 2. Preview & Offset -->
+  <!-- Step 2: Preview & Settings (hidden until PDF loads) -->
   <div class="card hidden" id="step-preview">
-    <div class="row">
+    <div class="step-header">
+      <div class="step-number">2</div>
+      <h2 class="step-title">Review Chapters</h2>
+    </div>
+    
+    <div id="ai-status" class="status-box hidden" style="margin-bottom: 15px;"></div>
+    
+    <!-- Page Navigator -->
+    <div class="row" style="margin-bottom: 15px;">
       <div class="col">
-        <label>Content Start (PDF Page #)</label>
-        <div style="display: flex; gap: 5px;">
-          <input type="number" id="page-offset" value="1" min="1" style="margin:0;">
-          <button id="set-offset-btn" class="secondary" style="width:auto; margin:0;">Use Current</button>
+        <label>Which PDF page is page 1 of the book?</label>
+        <div style="display: flex; gap: 5px; align-items: center;">
+          <input type="number" id="page-offset" value="1" min="1" style="margin:0; width: 80px;">
+          <button id="set-offset-btn" class="secondary" style="width:auto; margin:0;">Use Current Page</button>
         </div>
         <div style="margin-top: 8px;">
-            <label style="display:inline; font-weight:normal;">
+            <label style="display:inline; font-weight:normal; font-size: 0.85rem; color: #64748b;">
                 <input type="checkbox" id="custom-first-page-toggle" style="width:auto; display:inline-block;"> 
-                Doc starts at page # <input type="number" id="first-page-number" value="1" style="width: 60px; display:inline-block; padding: 4px;">
+                Book starts at page # <input type="number" id="first-page-number" value="1" style="width: 60px; display:inline-block; padding: 4px;"> (for journals)
             </label>
         </div>
       </div>
-      <div class="col" style="flex: 2;">
-        <div style="display: flex; gap: 5px; align-items: center; justify-content: flex-end;">
+      <div class="col" style="flex: 1;">
+        <label>Preview</label>
+        <div style="display: flex; gap: 5px; align-items: center;">
             <button id="prev-page" class="secondary" style="width:40px;">←</button>
             <input type="number" id="preview-page-num" value="1" style="width:60px; margin:0; text-align:center;">
             <span id="total-pages" style="color: #64748b;">/ ?</span>
@@ -123,34 +192,52 @@
         </div>
       </div>
     </div>
+    
     <canvas id="preview-canvas"></canvas>
   </div>
 
-  <!-- 3. Chapters -->
+  <!-- Step 3: Chapters -->
   <div class="card hidden" id="step-chapters">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h2 style="margin:0;">Chapters</h2>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="step-number">3</div>
+            <h2 class="step-title">Chapters Found</h2>
+        </div>
         <div style="display: flex; gap: 8px;">
             <button id="verify-btn" class="secondary" style="width: auto;">🔍 Verify Pages</button>
-            <button id="run-ai-btn" class="success" style="width: auto;">✨ Re-scan ToC</button>
+            <button id="run-ai-btn" class="secondary" style="width: auto;">🔄 Re-scan</button>
         </div>
     </div>
     
     <div id="verify-status" class="status-box hidden" style="margin-bottom: 15px;"></div>
-    
-    <div id="ai-status" class="status-box hidden"></div>
 
     <div id="chapter-list"></div>
-    <button id="add-chapter-btn" class="secondary" style="margin-top: 10px;">+ Add Chapter</button>
+    <button id="add-chapter-btn" class="secondary" style="margin-top: 10px;">+ Add Chapter Manually</button>
   </div>
 
-  <!-- 4. Download -->
+  <!-- Step 4: Download -->
   <div class="card hidden" id="step-download">
-    <label>Output Filename</label>
-    <input type="text" id="output-filename" placeholder="book_with_toc.pdf">
-    <button id="download-btn" class="primary">Download PDF</button>
-    <div id="process-status" class="status-box hidden"></div>
+    <div class="download-section">
+      <div class="step-header" style="justify-content: center;">
+        <div class="step-number" style="background: var(--success);">4</div>
+        <h2 class="step-title">Download Your Bookmarked PDF</h2>
+      </div>
+      
+      <div style="margin-bottom: 15px;">
+        <label style="text-align: left;">Save as:</label>
+        <input type="text" id="output-filename" placeholder="my-book-bookmarked.pdf" style="max-width: 400px; margin: 0 auto;">
+      </div>
+      
+      <button id="download-btn" class="big-download-btn">⬇️ Download PDF with Bookmarks</button>
+      
+      <div style="margin-top: 20px;">
+        <button id="start-over-btn" class="start-over-btn">Start Over with New PDF</button>
+      </div>
+    </div>
   </div>
+  
+  <!-- Hidden config -->
+  <input type="hidden" id="ai-max-pages" value="40">
 
   <script>
     // --- CONFIGURATION ---
@@ -175,14 +262,14 @@
             const data = await res.json();
             const statusEl = $("backend-status");
             if (data.gemini_available) {
-                statusEl.textContent = "● Online & AI Ready";
+                statusEl.textContent = "Ready ✓";
                 statusEl.style.color = "#166534";
             } else {
-                statusEl.textContent = "● Online (AI Missing Key)";
+                statusEl.textContent = "Limited (AI unavailable)";
                 statusEl.style.color = "#ca8a04";
             }
         } catch (e) {
-            $("backend-status").textContent = "● Offline";
+            $("backend-status").textContent = "Offline";
             $("backend-status").style.color = "#dc2626";
         }
     }
@@ -192,7 +279,7 @@
         pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
         totalPages = pdfDoc.numPages;
         
-        $("file-info").textContent = `✅ Loaded: ${name} (${totalPages} pages)`;
+        $("file-info").textContent = `✓ Loaded: ${name} (${totalPages} pages)`;
         $("file-info").classList.remove("hidden");
         
         const baseName = name.replace(/\.pdf$/i, "");
@@ -202,6 +289,32 @@
         renderPreview(1);
         
         await runAiAnalysis();
+    }
+    
+    function startOver() {
+        // Reset state
+        pdfDoc = null;
+        pdfBytes = null;
+        totalPages = 0;
+        currentPage = 1;
+        
+        // Reset form inputs
+        $("pdf-file").value = "";
+        $("pdf-url").value = "";
+        $("page-offset").value = "1";
+        $("first-page-number").value = "1";
+        $("custom-first-page-toggle").checked = false;
+        $("output-filename").value = "";
+        $("chapter-list").innerHTML = "";
+        
+        // Hide all steps except upload
+        ["step-preview", "step-chapters", "step-download"].forEach(id => $(id).classList.add("hidden"));
+        
+        // Hide status messages
+        ["file-info", "url-error", "ai-status", "verify-status"].forEach(id => $(id).classList.add("hidden"));
+        
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
     // --- 2. Preview Logic ---
@@ -222,14 +335,17 @@
     }
 
     // --- 3. AI Logic ---
-    async function runAiAnalysis() {
+    async function runAiAnalysis(skipBookmarks = false) {
         const statusEl = $("ai-status");
         statusEl.classList.remove("hidden");
         statusEl.className = "status-box processing";
-        statusEl.textContent = "🔍 AI is analyzing the PDF structure...";
+        statusEl.textContent = skipBookmarks ? "Scanning table of contents with AI..." : "Reading table of contents...";
 
         const formData = new FormData();
         formData.append("max_pages", $("ai-max-pages").value);
+        if (skipBookmarks) {
+            formData.append("skip_bookmarks", "true");
+        }
         
         const fileInput = $("pdf-file");
         const urlInput = $("pdf-url");
@@ -244,8 +360,6 @@
         }
 
         try {
-            statusEl.textContent = "🤖 Sending to AI... (this may take a few seconds)";
-            
             const res = await fetch(`${BACKEND_URL}/analyze-pdf-ai`, { method: "POST", body: formData });
             if (!res.ok) throw new Error(await res.text());
             
@@ -265,16 +379,29 @@
             
             statusEl.className = "status-box success";
             if (data.source === "pdf_bookmarks") {
-                statusEl.textContent = `📑 Found ${data.entries?.length || 0} chapters from existing PDF bookmarks (no AI needed). Review below.`;
+                statusEl.innerHTML = `📑 Found ${data.entries?.length || 0} chapters from existing PDF bookmarks. 
+                    <br><small style="color: #64748b;">If these don't look right, 
+                    <a href="#" id="force-ai-link" style="color: var(--primary);">click here to scan the table of contents with AI</a>.</small>`;
+                
+                // Add click handler for the AI link
+                setTimeout(() => {
+                    const link = $("force-ai-link");
+                    if (link) {
+                        link.onclick = (e) => {
+                            e.preventDefault();
+                            runAiAnalysis(true); // Force AI scan
+                        };
+                    }
+                }, 0);
             } else {
-                statusEl.textContent = `✅ AI found ${data.entries?.length || 0} chapters. Review below and click Download when ready.`;
+                statusEl.textContent = `✓ Found ${data.entries?.length || 0} chapters. Review and download below.`;
             }
             
             ["step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
             
         } catch (e) {
             statusEl.className = "status-box error";
-            statusEl.textContent = "❌ AI Error: " + e.message + " — You can add chapters manually below.";
+            statusEl.textContent = "Couldn't read chapters automatically. You can add them manually below.";
             ["step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
         }
     }
@@ -287,7 +414,7 @@
             <span class="drag-handle">☰</span>
             <input type="text" class="ch-title" value="${escapeHtml(title)}" placeholder="Chapter Title">
             <input type="text" class="ch-page" value="${escapeHtml(String(page))}" placeholder="Page">
-            <button class="verify-btn" title="Jump to this page in preview">Preview</button>
+            <button class="verify-btn" title="Jump to this page">Preview</button>
             <button class="del-btn" title="Remove">×</button>
         `;
         
@@ -313,7 +440,7 @@
         const idx = calculatePdfIndex(pageStr);
         
         if (idx === null || idx < 0 || idx >= totalPages) {
-            alert(`Invalid page: "${pageStr}" — cannot preview`);
+            alert(`Can't preview page "${pageStr}" - please check the page number.`);
             return;
         }
         
@@ -376,12 +503,12 @@
         return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     }
 
-    // --- 5. Verify Chapters (UPDATED) ---
+    // --- 5. Verify Chapters ---
     async function verifyChapters() {
         const statusEl = $("verify-status");
         statusEl.classList.remove("hidden");
         statusEl.className = "status-box processing";
-        statusEl.textContent = "🔍 Verifying chapter pages... (checking ±5 pages for each)";
+        statusEl.textContent = "Checking page numbers...";
         
         const rows = document.querySelectorAll(".chapter-row");
         const chapters = [];
@@ -394,7 +521,7 @@
         
         if (chapters.length === 0) {
             statusEl.className = "status-box error";
-            statusEl.textContent = "❌ No chapters to verify";
+            statusEl.textContent = "No chapters to verify.";
             return;
         }
         
@@ -428,7 +555,6 @@
             let notFoundCount = 0;
             const fixes = [];
             
-            // Map results by title to handle skipped rows
             const resultMap = {};
             results.forEach(r => resultMap[r.title] = r);
             
@@ -448,12 +574,10 @@
                         row.style.background = "#f0fdf4";
                         matchCount++;
                     } else {
-                        // Auto-fix logic
                         const oldVal = pageInput.value;
                         const contentStart = parseInt($("page-offset").value) || 1;
                         const firstPrinted = parseInt($("first-page-number").value) || 1;
                         
-                        // Calculate printed page: (FoundPDF - ContentStart) + FirstPrinted
                         const calculatedPrinted = (result.found_on_page - contentStart) + firstPrinted;
                         
                         let newVal;
@@ -466,19 +590,21 @@
                         pageInput.value = newVal;
                         row.style.borderColor = "#f59e0b";
                         row.style.background = "#fffbeb";
-                        fixes.push(`"${title.substring(0, 20)}...": ${oldVal} → ${newVal}`);
+                        fixes.push(`"${title.substring(0, 25)}...": ${oldVal} → ${newVal}`);
                         fixedCount++;
                     }
                 } else {
                     row.style.borderColor = "#ef4444";
                     row.style.background = "#fef2f2";
-                    pageInput.title = "Chapter title not found near this page";
+                    pageInput.title = "Chapter not found near this page";
                     notFoundCount++;
                 }
             });
             
-            let summary = `✅ Verified. Correct: ${matchCount}, Fixed: ${fixedCount}, Not Found: ${notFoundCount}`;
-            if (fixes.length > 0) summary += `\n\n📝 Fixes Applied:\n` + fixes.join("\n");
+            let summary = `✓ Done! ${matchCount} correct`;
+            if (fixedCount > 0) summary += `, ${fixedCount} auto-corrected`;
+            if (notFoundCount > 0) summary += `, ${notFoundCount} not found`;
+            if (fixes.length > 0) summary += `\n\nCorrections made:\n` + fixes.join("\n");
             
             statusEl.className = notFoundCount > 0 ? "status-box processing" : "status-box success";
             statusEl.style.whiteSpace = "pre-wrap";
@@ -486,12 +612,17 @@
             
         } catch (e) {
             statusEl.className = "status-box error";
-            statusEl.textContent = "❌ Verification error: " + e.message;
+            statusEl.textContent = "Verification failed: " + e.message;
         }
     }
 
     // --- 6. PDF Generation ---
     async function generatePdf() {
+        const btn = $("download-btn");
+        const originalText = btn.textContent;
+        btn.textContent = "Creating PDF...";
+        btn.disabled = true;
+        
         try {
             const { PDFDocument, PDFName, PDFString } = PDFLib;
             const doc = await PDFDocument.load(pdfBytes);
@@ -510,7 +641,7 @@
             });
 
             if (bookmarks.length === 0) {
-                alert("No valid bookmarks to add. Check that page numbers are correct.");
+                alert("No valid bookmarks to add. Please check your page numbers.");
                 return;
             }
 
@@ -551,11 +682,15 @@
             const blob = new Blob([outBytes], { type: "application/pdf" });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = $("output-filename").value || "download.pdf";
+            link.download = $("output-filename").value || "bookmarked.pdf";
             link.click();
+            
         } catch (e) {
             console.error("PDF Generation Error:", e);
-            alert("Error generating PDF: " + e.message);
+            alert("Error creating PDF: " + e.message);
+        } finally {
+            btn.textContent = originalText;
+            btn.disabled = false;
         }
     }
 
@@ -565,7 +700,7 @@
         
         $("pdf-file").onchange = async (e) => {
             if (e.target.files[0]) {
-                $("file-info").textContent = "📄 Loading PDF...";
+                $("file-info").textContent = "Loading PDF...";
                 $("file-info").classList.remove("hidden");
                 await loadPdf(await e.target.files[0].arrayBuffer(), e.target.files[0].name);
             }
@@ -580,7 +715,7 @@
             btn.textContent = "Loading...";
             btn.disabled = true;
             $("url-error").classList.add("hidden");
-            $("file-info").textContent = "📥 Downloading PDF...";
+            $("file-info").textContent = "Downloading PDF...";
             $("file-info").classList.remove("hidden");
             
             let filename = "Dropbox PDF";
@@ -595,10 +730,10 @@
             
             try {
                 const res = await fetch(`${WORKER_URL}?url=${encodeURIComponent(url)}`);
-                if (!res.ok) throw new Error("Proxy Error");
+                if (!res.ok) throw new Error("Could not download file. Check the link and try again.");
                 await loadPdf(await res.arrayBuffer(), filename);
             } catch (e) {
-                $("url-error").textContent = "❌ " + e.message;
+                $("url-error").textContent = e.message;
                 $("url-error").classList.remove("hidden");
                 $("file-info").classList.add("hidden");
             } finally {
@@ -616,10 +751,11 @@
             document.querySelectorAll(".chapter-row").forEach(validateRow);
         };
 
-        $("run-ai-btn").onclick = runAiAnalysis;
+        $("run-ai-btn").onclick = () => runAiAnalysis(true); // Re-scan always uses AI
         $("verify-btn").onclick = verifyChapters;
         $("add-chapter-btn").onclick = () => addChapterRow();
         $("download-btn").onclick = generatePdf;
+        $("start-over-btn").onclick = startOver;
         
         const list = $("chapter-list");
         list.ondragover = (e) => {
@@ -635,5 +771,3 @@
   </script>
 </body>
 </html>
-
-  
