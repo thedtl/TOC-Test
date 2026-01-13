@@ -1,3 +1,4 @@
+    
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,8 +38,26 @@
     /* Chapter List Styles */
     .chapter-row { display: flex; gap: 8px; align-items: center; background: #fff; border: 1px solid var(--border); padding: 8px; border-radius: 6px; margin-bottom: 8px; }
     .chapter-row.invalid { border-color: #fca5a5; background: #fef2f2; }
+    
     .drag-handle { cursor: grab; color: #94a3b8; padding: 0 5px; }
-    .del-btn { width: auto; background: #fee2e2; color: #991b1b; padding: 8px 12px; margin: 0; }
+    
+    /* Inputs in row */
+    .ch-title { flex: 1; margin-bottom: 0; }
+    .ch-page { width: 70px !important; margin-bottom: 0; text-align: center; }
+
+    /* Buttons in row */
+    .verify-btn {
+        width: auto !important;
+        font-size: 0.75rem;
+        padding: 6px 12px;
+        margin-bottom: 0;
+        background: #e2e8f0;
+        color: #475569;
+        white-space: nowrap;
+    }
+    .verify-btn:hover { background: #cbd5e1; }
+    
+    .del-btn { width: auto !important; background: #fee2e2; color: #991b1b; padding: 6px 12px; margin: 0; }
     
     canvas { border: 1px solid var(--border); max-width: 100%; height: auto; border-radius: 6px; margin-top: 10px; }
   </style>
@@ -169,24 +188,19 @@
     }
 
     async function loadPdf(data, name) {
-        // Store as Uint8Array to prevent detachment issues
         pdfBytes = new Uint8Array(data);
-        // Pass a copy to pdf.js so our bytes stay valid
         pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
         totalPages = pdfDoc.numPages;
         
         $("file-info").textContent = `✅ Loaded: ${name} (${totalPages} pages)`;
         $("file-info").classList.remove("hidden");
         
-        // Set output filename
         const baseName = name.replace(/\.pdf$/i, "");
         $("output-filename").value = `${baseName} (bookmarked).pdf`;
         
-        // Show preview section only, not chapters yet
         $("step-preview").classList.remove("hidden");
         renderPreview(1);
         
-        // Run AI - sections will be revealed when AI completes
         await runAiAnalysis();
     }
 
@@ -217,7 +231,6 @@
         const formData = new FormData();
         formData.append("max_pages", $("ai-max-pages").value);
         
-        // Decide source
         const fileInput = $("pdf-file");
         const urlInput = $("pdf-url");
         
@@ -226,7 +239,6 @@
         } else if (urlInput.value) {
             formData.append("pdf_url", urlInput.value);
         } else {
-            // Fallback for bytes loaded via proxy
             const blob = new Blob([pdfBytes], { type: "application/pdf" });
             formData.append("pdf_file", blob, "downloaded.pdf");
         }
@@ -238,39 +250,27 @@
             if (!res.ok) throw new Error(await res.text());
             
             const data = await res.json();
+            if (data.error) throw new Error(data.error);
             
-            // Check for error in response
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            
-            // Apply AI Findings
             if (data.content_start_pdf_page) $("page-offset").value = data.content_start_pdf_page;
             if (data.first_page_number) {
                 $("first-page-number").value = data.first_page_number;
-                // If first page isn't 1, check the custom checkbox
-                if (data.first_page_number !== 1) {
-                    $("custom-first-page-toggle").checked = true;
-                }
+                if (data.first_page_number !== 1) $("custom-first-page-toggle").checked = true;
             }
             
-            // Populate Chapters
             const list = $("chapter-list");
             list.innerHTML = "";
-            $("verify-status").classList.add("hidden");  // Hide old verification results
+            $("verify-status").classList.add("hidden");
             (data.entries || []).forEach(entry => addChapterRow(entry.title, entry.page));
             
             statusEl.className = "status-box success";
             statusEl.textContent = `✅ Found ${data.entries?.length || 0} chapters. Review below and click Download when ready.`;
             
-            // Now reveal the chapters and download sections
             ["step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
             
         } catch (e) {
             statusEl.className = "status-box error";
             statusEl.textContent = "❌ AI Error: " + e.message + " — You can add chapters manually below.";
-            
-            // Still reveal sections so user can add manually
             ["step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
         }
     }
@@ -281,22 +281,20 @@
         div.className = "chapter-row";
         div.innerHTML = `
             <span class="drag-handle">☰</span>
-            <input type="text" class="ch-title" value="${escapeHtml(title)}" placeholder="Title">
-            <input type="text" class="ch-page" value="${escapeHtml(String(page))}" placeholder="Page" style="width: 80px;">
-            <button class="verify-btn" title="Preview this page">👁</button>
-            <button class="del-btn">×</button>
+            <input type="text" class="ch-title" value="${escapeHtml(title)}" placeholder="Chapter Title">
+            <input type="text" class="ch-page" value="${escapeHtml(String(page))}" placeholder="Page">
+            <button class="verify-btn" title="Jump to this page in preview">Preview</button>
+            <button class="del-btn" title="Remove">×</button>
         `;
         
-        // Events
         div.querySelector(".del-btn").onclick = () => div.remove();
         div.querySelector(".ch-page").oninput = () => {
             validateRow(div);
-            resetRowStyle(div);  // Clear verification styling on edit
+            resetRowStyle(div);
         };
         div.querySelector(".ch-title").oninput = () => resetRowStyle(div);
         div.querySelector(".verify-btn").onclick = () => verifyRow(div);
         
-        // Drag Logic (Simplified)
         const handle = div.querySelector(".drag-handle");
         handle.draggable = true;
         handle.ondragstart = () => div.classList.add("dragging");
@@ -315,25 +313,19 @@
             return;
         }
         
-        // Jump to that page in preview (idx is 0-based, renderPreview expects 1-based)
         renderPreview(idx + 1);
-        
-        // Scroll preview into view
         $("preview-canvas").scrollIntoView({ behavior: "smooth", block: "center" });
         
-        // Highlight the row briefly
         row.style.background = "#fef3c7";
         setTimeout(() => row.style.background = "", 1500);
     }
     
     function resetRowStyle(row) {
-        // Clear verification styling when user edits
         row.style.borderColor = "";
         row.style.background = "";
         row.querySelector(".ch-page").title = "";
     }
 
-    // --- THE CRITICAL MATH LOGIC (Must Keep) ---
     function validateRow(row) {
         const val = row.querySelector(".ch-page").value;
         const idx = calculatePdfIndex(val);
@@ -345,32 +337,21 @@
         token = String(token).trim().toLowerCase();
         if (!token) return null;
 
-        // 1. Handle "pdf:5" syntax (direct PDF page)
         const directMatch = token.match(/^pdf:(\d+)$/);
         if (directMatch) return parseInt(directMatch[1]) - 1;
 
-        // 2. Get Offsets
-        const contentStart = parseInt($("page-offset").value) || 1; // e.g., PDF Page 15
-        const firstPrintedNum = parseInt($("first-page-number").value) || 1; // e.g., Printed Page 1
+        const contentStart = parseInt($("page-offset").value) || 1;
+        const firstPrintedNum = parseInt($("first-page-number").value) || 1;
 
-        // 3. Handle Roman Numerals (iv -> 4)
         if (/^[ivxlcdm]+$/.test(token)) {
             const val = romanToInt(token);
-            // Logic: If content starts at PDF 15, and we have roman 'iv' (4),
-            // usually roman numerals are BEFORE the content start.
-            // This is a simple heuristic: place them relative to content start.
-            // Or, if the document is ALL roman, this might need tweaking, 
-            // but usually roman = front matter.
-            return (contentStart - 1) - (10 - val); // Rough guess for front matter, usually user adjusts offset
+            return (contentStart - 1) - (10 - val); 
         }
 
-        // 4. Handle Arabic Numerals (12 -> ?)
         const pageNum = parseInt(token);
         if (isNaN(pageNum)) return null;
 
-        // Formula: (Printed Page - First Printed Page) + (PDF Page where content starts - 1)
         const pdfIndex = (pageNum - firstPrintedNum) + (contentStart - 1);
-        
         if (pdfIndex < 0 || pdfIndex >= totalPages) return null;
         return pdfIndex;
     }
@@ -391,23 +372,20 @@
         return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     }
 
-    // --- 5. Verify Chapters ---
+    // --- 5. Verify Chapters (UPDATED) ---
     async function verifyChapters() {
         const statusEl = $("verify-status");
         statusEl.classList.remove("hidden");
         statusEl.className = "status-box processing";
         statusEl.textContent = "🔍 Verifying chapter pages... (checking ±5 pages for each)";
         
-        // Gather chapters from UI
         const rows = document.querySelectorAll(".chapter-row");
         const chapters = [];
         
         rows.forEach(row => {
             const title = row.querySelector(".ch-title").value.trim();
             const page = row.querySelector(".ch-page").value.trim();
-            if (title && page) {
-                chapters.push({ title, page });
-            }
+            if (title && page) chapters.push({ title, page });
         });
         
         if (chapters.length === 0) {
@@ -422,10 +400,8 @@
         formData.append("first_page_number", $("first-page-number").value);
         formData.append("search_range", "5");
         
-        // Send PDF
         const fileInput = $("pdf-file");
         const urlInput = $("pdf-url");
-        
         if (fileInput.files[0]) {
             formData.append("pdf_file", fileInput.files[0]);
         } else if (urlInput.value) {
@@ -440,65 +416,65 @@
             if (!res.ok) throw new Error(await res.text());
             
             const data = await res.json();
+            if (data.error) throw new Error(data.error);
             
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            
-            // Process results and auto-fix
             const results = data.results || [];
             let matchCount = 0;
             let fixedCount = 0;
             let notFoundCount = 0;
             const fixes = [];
             
-            rows.forEach((row, i) => {
-                const result = results[i];
-                if (!result) return;
-                
+            // Map results by title to handle skipped rows
+            const resultMap = {};
+            results.forEach(r => resultMap[r.title] = r);
+            
+            rows.forEach((row) => {
+                const title = row.querySelector(".ch-title").value;
                 const pageInput = row.querySelector(".ch-page");
-                const titleInput = row.querySelector(".ch-title");
+                const result = resultMap[title];
+
+                if (!result) return; 
                 
-                if (result.found && result.offset_diff === 0) {
-                    // Match - green highlight, no change needed
-                    row.style.borderColor = "#22c55e";
-                    row.style.background = "#f0fdf4";
-                    matchCount++;
-                } else if (result.found && result.offset_diff !== 0) {
-                    // Found on different page - AUTO-FIX with pdf:X
-                    const oldValue = pageInput.value;
-                    const newValue = `pdf:${result.found_on_page}`;
-                    pageInput.value = newValue;
-                    
-                    row.style.borderColor = "#f59e0b";
-                    row.style.background = "#fffbeb";
-                    fixes.push(`"${titleInput.value.substring(0, 30)}..." : ${oldValue} → ${newValue}`);
-                    fixedCount++;
+                const currentPdfIdx = calculatePdfIndex(pageInput.value);
+                const currentPdfPage = currentPdfIdx !== null ? currentPdfIdx + 1 : -1;
+
+                if (result.found) {
+                    if (result.found_on_page === currentPdfPage) {
+                        row.style.borderColor = "#22c55e";
+                        row.style.background = "#f0fdf4";
+                        matchCount++;
+                    } else {
+                        // Auto-fix logic
+                        const oldVal = pageInput.value;
+                        const contentStart = parseInt($("page-offset").value) || 1;
+                        const firstPrinted = parseInt($("first-page-number").value) || 1;
+                        
+                        // Calculate printed page: (FoundPDF - ContentStart) + FirstPrinted
+                        const calculatedPrinted = (result.found_on_page - contentStart) + firstPrinted;
+                        
+                        let newVal;
+                        if (calculatedPrinted > 0) {
+                            newVal = String(calculatedPrinted);
+                        } else {
+                            newVal = `pdf:${result.found_on_page}`;
+                        }
+
+                        pageInput.value = newVal;
+                        row.style.borderColor = "#f59e0b";
+                        row.style.background = "#fffbeb";
+                        fixes.push(`"${title.substring(0, 20)}...": ${oldVal} → ${newVal}`);
+                        fixedCount++;
+                    }
                 } else {
-                    // Not found - red highlight, leave unchanged
                     row.style.borderColor = "#ef4444";
                     row.style.background = "#fef2f2";
-                    pageInput.title = "Chapter not found in scanned range";
+                    pageInput.title = "Chapter title not found near this page";
                     notFoundCount++;
                 }
             });
             
-            // Show summary
-            let summary = `✅ Verified ${results.length} chapters:\n`;
-            summary += `   • ${matchCount} correct\n`;
-            
-            if (fixedCount > 0) {
-                summary += `   • ${fixedCount} auto-fixed\n`;
-            }
-            
-            if (notFoundCount > 0) {
-                summary += `   • ${notFoundCount} not found (may need manual adjustment)\n`;
-            }
-            
-            if (fixes.length > 0) {
-                summary += `\n📝 Changes made:\n`;
-                fixes.forEach(f => summary += `   ${f}\n`);
-            }
+            let summary = `✅ Verified. Correct: ${matchCount}, Fixed: ${fixedCount}, Not Found: ${notFoundCount}`;
+            if (fixes.length > 0) summary += `\n\n📝 Fixes Applied:\n` + fixes.join("\n");
             
             statusEl.className = notFoundCount > 0 ? "status-box processing" : "status-box success";
             statusEl.style.whiteSpace = "pre-wrap";
@@ -510,7 +486,7 @@
         }
     }
 
-    // --- 5. PDF Generation ---
+    // --- 6. PDF Generation ---
     async function generatePdf() {
         try {
             const { PDFDocument, PDFName, PDFString } = PDFLib;
@@ -534,7 +510,6 @@
                 return;
             }
 
-            // Create Outline
             const context = doc.context;
             const refs = [];
             
@@ -557,7 +532,6 @@
                 });
                 const outlineRef = context.register(outlineDict);
 
-                // Link Linked List
                 for (let i = 0; i < refs.length; i++) {
                     const item = context.lookup(refs[i]);
                     item.set(PDFName.of("Parent"), outlineRef);
@@ -596,9 +570,7 @@
         $("load-url-btn").onclick = async () => {
             const url = $("pdf-url").value;
             if (!url) return;
-            if (WORKER_URL.includes("your-worker")) return alert("Please set WORKER_URL in code");
             
-            // Show loading state
             const btn = $("load-url-btn");
             const originalText = btn.textContent;
             btn.textContent = "Loading...";
@@ -607,7 +579,6 @@
             $("file-info").textContent = "📥 Downloading PDF...";
             $("file-info").classList.remove("hidden");
             
-            // Try to extract filename from URL
             let filename = "Dropbox PDF";
             try {
                 const urlObj = new URL(url);
@@ -616,7 +587,7 @@
                 if (lastPart && lastPart.includes(".pdf")) {
                     filename = decodeURIComponent(lastPart.split("?")[0]);
                 }
-            } catch (e) { /* ignore */ }
+            } catch (e) { }
             
             try {
                 const res = await fetch(`${WORKER_URL}?url=${encodeURIComponent(url)}`);
@@ -646,7 +617,6 @@
         $("add-chapter-btn").onclick = () => addChapterRow();
         $("download-btn").onclick = generatePdf;
         
-        // Drag & Drop Reordering
         const list = $("chapter-list");
         list.ondragover = (e) => {
             e.preventDefault();
@@ -661,3 +631,5 @@
   </script>
 </body>
 </html>
+
+  
