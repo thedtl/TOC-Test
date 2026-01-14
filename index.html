@@ -134,6 +134,12 @@
       <h2 class="step-title">Review Chapters</h2>
     </div>
     
+    <!-- Scan Options -->
+    <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+      <button id="rescan-front-btn" class="secondary" style="width: auto;">🔄 Re-scan Front</button>
+      <button id="scan-end-btn" class="secondary" style="width: auto;">📖 Scan End of PDF</button>
+    </div>
+    
     <div id="ai-status" class="status-box hidden" role="status" aria-live="polite"></div>
     
     <!-- Page Settings -->
@@ -314,15 +320,23 @@
     }
 
     // --- AI Analysis ---
-    async function runAiAnalysis(skipBookmarks = false) {
+    async function runAiAnalysis(skipBookmarks = false, scanFromEnd = false) {
         const statusEl = $("ai-status");
         statusEl.classList.remove("hidden");
         statusEl.className = "status-box processing";
-        statusEl.textContent = skipBookmarks ? "Scanning with AI..." : "Reading table of contents...";
+        
+        if (scanFromEnd) {
+            statusEl.textContent = "Scanning end of PDF for table of contents...";
+        } else if (skipBookmarks) {
+            statusEl.textContent = "Scanning with AI...";
+        } else {
+            statusEl.textContent = "Reading table of contents...";
+        }
 
         const formData = new FormData();
         formData.append("max_pages", "40");
         if (skipBookmarks) formData.append("skip_bookmarks", "true");
+        if (scanFromEnd) formData.append("scan_from_end", "true");
         
         // Prefer URL if available (avoids upload size limits)
         if (pdfSource === 'url' && pdfUrl) {
@@ -761,6 +775,10 @@
         $("add-chapter-btn").onclick = () => addChapterRow();
         $("download-btn").onclick = downloadPdf;
         $("start-over-btn").onclick = startOver;
+        
+        // Scan buttons
+        $("rescan-front-btn").onclick = () => runAiAnalysis(true, false);
+        $("scan-end-btn").onclick = () => runAiAnalysis(true, true);
         
         // Drag and drop for chapters
         const list = $("chapter-list");
