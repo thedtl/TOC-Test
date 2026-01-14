@@ -25,7 +25,7 @@
     button.primary { background: var(--primary); color: white; }
     button.secondary { background: #f1f5f9; color: #334155; }
     button.success { background: var(--success); color: white; }
-    .status-box { padding: 10px; border-radius: 6px; font-size: 0.9rem; margin-top: 10px; }
+    .status-box { padding: 10px; border-radius: 6px; font-size: 0.9rem; margin-top: 10px; word-wrap: break-word; }
     .status-box.processing { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
     .status-box.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
     .status-box.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
@@ -127,7 +127,7 @@
             const data = await res.json();
             const el = $("backend-status");
             if (data.gemini_available) { el.textContent = "Ready ✓"; el.style.color = "#166534"; } 
-            else { el.textContent = "Limited"; el.style.color = "#ca8a04"; }
+            else { el.textContent = "Limited (AI Config Missing)"; el.style.color = "#ca8a04"; }
         } catch (e) { $("backend-status").textContent = "Offline"; $("backend-status").style.color = "#dc2626"; }
     }
 
@@ -178,8 +178,15 @@
 
         try {
             const res = await fetch(`${BACKEND_URL}/analyze-pdf-ai`, { method: "POST", body: formData });
-            if (!res.ok) throw new Error("Backend Error: " + res.status);
-            const data = await res.json();
+            
+            let data;
+            try {
+                data = await res.json();
+            } catch (parseErr) {
+                throw new Error(`Server Error (${res.status}): Could not parse response.`);
+            }
+
+            if (!res.ok) throw new Error(data.error || `Server Error: ${res.status}`);
             if (data.error) throw new Error(data.error);
 
             if (data.content_start_pdf_page) $("page-offset").value = data.content_start_pdf_page;
@@ -190,11 +197,20 @@
             (data.entries || []).forEach(e => addChapterRow(e.title, e.page));
 
             statusEl.className = "status-box success";
-            statusEl.textContent = `✓ Found ${data.entries?.length || 0} chapters. ${data.notes || ''}`;
+            const count = data.entries?.length || 0;
+            statusEl.textContent = `✓ Found ${count} chapters. ${data.notes || ''}`;
+            
+            if (count === 0) {
+                 statusEl.className = "status-box error";
+                 statusEl.textContent = "AI found no chapters, but analysis completed. Please add manually.";
+            }
+
             ["step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
         } catch (e) {
+            console.error("AI Error Details:", e);
             statusEl.className = "status-box error";
-            statusEl.textContent = "AI Analysis failed (You can manually add chapters).";
+            // FIX: Now displays the actual error message
+            statusEl.textContent = `Error: ${e.message}`;
             ["step-chapters", "step-download"].forEach(id => $(id).classList.remove("hidden"));
         }
     }
