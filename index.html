@@ -234,7 +234,7 @@
                     if (val) idx = (val - 1) + (romanStart - 1);
                 } else {
                     const pNum = parseInt(pageStr);
-                    if (!isNaN(pNum)) idx = (pNum - firstPageNum) + contentStart;
+                    if (!isNaN(pNum)) idx = (pNum - firstPageNum) + (contentStart -1);
                 }
 
                 if (idx >= 0 && idx < pdfDocWrite.getPageCount()) {
